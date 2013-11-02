@@ -1,0 +1,26 @@
+People who have contributed code to Allegro 5:
+
+Angelo Mottola
+Chris Robinson
+David Capello
+Dennis Busch
+Elias Pschernig
+Evert Glebbeek
+John-Kim Murphy
+Jon Rafkind
+Matthew Leverton
+Michał Cichoń
+Milan Mimica
+Paul Suntsov
+Peter Hull
+Peter Wang
+Ryan Dickie
+Ryan Patterson
+Steven Wallace
+Thomas Fjellstrom
+Todd Cope
+Trent Gamblin
+
+Please let us know if we left anyone out.
+
+We must also thank everyone who contributed to previous versions of Allegro!
