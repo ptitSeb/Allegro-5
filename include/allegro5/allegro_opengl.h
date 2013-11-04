@@ -58,7 +58,7 @@
 #define GL_GLEXT_PROTOTYPES
 #endif
 
-#elif defined ALLEGRO_ANDROID || defined ALLEGRO_RASPBERRYPI
+#elif defined ALLEGRO_ANDROID || defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
 
 #include <GLES/gl.h>
 #include <GLES/glext.h>
@@ -105,7 +105,7 @@
 
 #endif /* ALLEGRO_MACOSX */
 
-#ifdef ALLEGRO_RASPBERRYPI
+#ifdef ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #endif
