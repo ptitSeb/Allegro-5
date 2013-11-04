@@ -178,6 +178,23 @@ set(ALLEGRO_SRC_RASPBERRYPI_FILES
    src/raspberrypi/pidisplay.c
    )
 
+set(ALLEGRO_SRC_PANDORA_FILES
+   src/unix/utime.c
+   src/unix/uxthread.c
+   src/linux/lkeybdnu.c
+   src/linux/lmseev.c
+   src/linux/lmsedrv.c
+   src/linux/ljoynu.c
+   src/x/xevents.c
+   src/x/xkeyboard.c
+   src/x/xmousenu.c
+   src/x/xwindow.c
+   src/x/xcursor.c
+   src/pandora/eglport.c
+   src/pandora/pandosystem.c
+   src/pandora/pandodisplay.c
+   )
+
 set(ALLEGRO_INCLUDE_ALLEGRO_FILES
     include/allegro5/allegro5.h
     include/allegro5/allegro.h

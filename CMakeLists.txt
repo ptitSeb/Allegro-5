@@ -32,6 +32,10 @@ option(WANT_GLES2 "Compile with GLES2 support" ON)
 if(WANT_ANDROID)
     include(${CMAKE_SOURCE_DIR}/cmake/Toolchain-android.cmake)
 endif(WANT_ANDROID)
+option(WANT_PANDORA "Build for Pandora" OFF)
+if(WANT_PANDORA)
+    include(${CMAKE_SOURCE_DIR}/cmake/Toolchain-openpandora.cmake)
+endif(WANT_PANDORA)
 
 # Set the project name.
 # We use C++ in a few cases.
@@ -725,6 +729,11 @@ if(ALLEGRO_RASPBERRYPI)
     list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_RASPBERRYPI_FILES})
     list(APPEND PLATFORM_LIBS ${X11_LIBRARIES})
 endif(ALLEGRO_RASPBERRYPI)
+
+if(ALLEGRO_PANDORA)
+    list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_PANDORA_FILES})
+    list(APPEND PLATFORM_LIBS m)
+else(ALLEGRO_PANDORA)   
 
 if(SUPPORT_OPENGL)
     list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_OPENGL_FILES})
