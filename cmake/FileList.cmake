@@ -287,6 +287,8 @@ set(ALLEGRO_INCLUDE_ALLEGRO_PLATFORM_FILES
     include/allegro5/platform/alwin.h
     include/allegro5/platform/astdbool.h
     include/allegro5/platform/astdint.h
+    include/allegro5/platform/alpandora.h
+    include/allegro5/platform/alpandoracfg.h
     )
 
 set(ALLEGRO_INCLUDE_ALLEGRO_WINDOWS_FILES
