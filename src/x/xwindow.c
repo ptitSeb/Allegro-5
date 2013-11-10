@@ -13,6 +13,11 @@
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_RASPBERRYPI
 #define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_RASPBERRYPI
 #endif
+#ifdef ALLEGRO_PANDORA
+#include "allegro5/internal/aintern_pandora.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
+#define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_PANDORA
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("xwindow")
 
@@ -32,6 +37,9 @@ void _al_xwin_set_size_hints(ALLEGRO_DISPLAY *d, int x_off, int y_off)
 #ifdef ALLEGRO_RASPBERRYPI
    int x, y;
    _al_raspberrypi_get_screen_info(&x, &y, &w, &h);
+#elif defined ALLEGRO_PANDORA
+   w = 800;
+   h = 480;
 #else
    w = d->w;
    h = d->h;
@@ -110,7 +118,7 @@ void _al_xwin_set_fullscreen_window(ALLEGRO_DISPLAY *display, int value)
    ALLEGRO_SYSTEM_XGLX *system = (void *)al_get_system_driver();
    ALLEGRO_DISPLAY_XGLX *glx = (ALLEGRO_DISPLAY_XGLX *)display;
    Display *x11 = system->x11display;
-#ifndef ALLEGRO_RASPBERRYPI
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
    int old_resize_count = glx->resize_count;
 #endif
 
@@ -135,7 +143,7 @@ void _al_xwin_set_fullscreen_window(ALLEGRO_DISPLAY *display, int value)
 
    XSendEvent(
       x11,
-#if !defined ALLEGRO_RASPBERRYPI
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
       RootWindowOfScreen(ScreenOfDisplay(x11, glx->xscreen)),
 #else
       RootWindowOfScreen(ScreenOfDisplay(x11, DefaultScreen(x11))),
@@ -143,7 +151,7 @@ void _al_xwin_set_fullscreen_window(ALLEGRO_DISPLAY *display, int value)
       False,
       SubstructureRedirectMask | SubstructureNotifyMask, &xev);
 
-#if !defined ALLEGRO_RASPBERRYPI
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
    if (value == 2) {
       /* Only wait for a resize if toggling. */
       _al_display_xglx_await_resize(display, old_resize_count, true);

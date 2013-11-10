@@ -21,10 +21,12 @@
 #include "allegro5/internal/aintern_system.h"
 
 #if defined ALLEGRO_WITH_XWINDOWS
-#ifndef ALLEGRO_RASPBERRYPI
-#include "allegro5/platform/aintxglx.h"
-#else
+#ifdef ALLEGRO_RASPBERRYPI
 #include "allegro5/internal/aintern_raspberrypi.h"
+#elif defined ALLEGRO_PANDORA
+#include "allegro5/internal/aintern_pandora.h"
+#else
+#include "allegro5/platform/aintxglx.h"
 #endif
 #endif
 
@@ -36,12 +38,15 @@
 void _al_register_system_interfaces(void)
 {
    ALLEGRO_SYSTEM_INTERFACE **add;
-#if defined ALLEGRO_WITH_XWINDOWS && !defined ALLEGRO_RASPBERRYPI
+#if defined ALLEGRO_WITH_XWINDOWS && !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
    add = _al_vector_alloc_back(&_al_system_interfaces);
    *add = _al_system_xglx_driver();
 #elif defined ALLEGRO_RASPBERRYPI
    add = _al_vector_alloc_back(&_al_system_interfaces);
    *add = _al_system_raspberrypi_driver();
+#elif defined ALLEGRO_PANDORA
+   add = _al_vector_alloc_back(&_al_system_interfaces);
+   *add = _al_system_pandora_driver();
 #endif
 }
 
