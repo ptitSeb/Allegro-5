@@ -58,7 +58,7 @@ ALLEGRO_DEBUG_CHANNEL("opengl")
     */
    #if defined ALLEGRO_GLXGETPROCADDRESSARB
       #define alXGetProcAddress glXGetProcAddressARB
-   #elif defined ALLEGRO_RASPBERRYPI
+   #elif defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
       #define alXGetProcAddress eglGetProcAddress
    #else
       #define alXGetProcAddress glXGetProcAddress

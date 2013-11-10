@@ -16,6 +16,11 @@
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_RASPBERRYPI
 #define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_RASPBERRYPI
 #endif
+#ifdef ALLEGRO_PANDORA
+#include "allegro5/internal/aintern_pandora.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
+#define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_PANDORA
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("xevents")
 
@@ -88,7 +93,7 @@ static void process_x11_event(ALLEGRO_SYSTEM_XGLX *s, XEvent event)
             _al_display_xglx_closebutton(&d->display, &event);
             break;
          }
-#ifndef ALLEGRO_RASPBERRYPI
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
          if (event.xclient.message_type == s->XEmbedAtom) {
             const long xtime = event.xclient.data.l[0];
             const long major = event.xclient.data.l[1];
