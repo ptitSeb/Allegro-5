@@ -1,9 +1,8 @@
 SET(ALLEGRO_PANDORA 1)
-SET(ALLEGRO_RASPBERRYPI 1)
 SET(CMAKE_SYSTEM_NAME Linux)
 
-SET(CMAKE_C_FLAGS "-mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -mno-unaligned-access")
-SET(CMAKE_CXX_FLAGS "-mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -mno-unaligned-access")
+SET(CMAKE_C_FLAGS "-mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -mno-unaligned-access -fdiagnostics-color=auto")
+SET(CMAKE_CXX_FLAGS "-mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -mno-unaligned-access -fdiagnostics-color=auto")
 SET(CMAKE_INSTALL_PREFIX "/mnt/utmp/codeblocks/usr")
 
 set(CMAKE_LINKER ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}ld)
@@ -18,6 +17,7 @@ SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 SET(ALLEGRO_CFG_OPENGLES 1)
+SET(ALLEGRO_CFG_NO_GLES2 1)
 
 SET(ALLEGRO_EXCLUDE_GLX 1)
 

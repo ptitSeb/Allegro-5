@@ -184,6 +184,7 @@ set(ALLEGRO_SRC_PANDORA_FILES
    src/linux/lkeybdnu.c
    src/linux/lmseev.c
    src/linux/lmsedrv.c
+   src/linux/lhaptic.c
    src/linux/ljoynu.c
    src/x/xevents.c
    src/x/xkeyboard.c
