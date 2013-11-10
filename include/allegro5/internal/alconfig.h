@@ -45,6 +45,8 @@
    #include "allegro5/platform/alandroidcfg.h"
 #elif defined ALLEGRO_RASPBERRYPI
    #include "allegro5/platform/alraspberrypicfg.h"
+#elif defined ALLEGRO_PANDORA
+   #include "allegro5/platform/alpandoracfg.h"
 #elif defined ALLEGRO_UNIX
    #include "allegro5/platform/alucfg.h"
 #else

@@ -105,7 +105,7 @@
 
 #endif /* ALLEGRO_MACOSX */
 
-#ifdef ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
+#if defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #endif

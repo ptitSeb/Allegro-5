@@ -30,7 +30,7 @@ extern "C" {
 extern _AL_DRIVER_INFO _al_linux_keyboard_driver_list[];
 extern _AL_DRIVER_INFO _al_linux_mouse_driver_list[];
 
-#ifdef ALLEGRO_RASPBERRYPI
+#if defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
 #define AL_MOUSEDRV_LINUX_EVDEV AL_ID('E', 'V', 'D', 'V')
 #endif
 
