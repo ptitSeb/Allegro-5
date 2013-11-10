@@ -55,6 +55,10 @@
    #define glGenFramebuffersEXT        glGenFramebuffers
    #define glGenerateMipmapEXT         glGenerateMipmap
    #define glOrtho                     glOrthof
+#elif defined ALLEGRO_PANDORA
+   #define GL_COLOR_ATTACHMENT0_EXT GL_COLOR_ATTACHMENT0_OES
+   #define GL_FRAMEBUFFER_COMPLETE_EXT GL_FRAMEBUFFER_COMPLETE_OES
+   #define glOrtho glOrthof
 #elif defined ALLEGRO_CFG_OPENGLES
    #define GL_COLOR_ATTACHMENT0_EXT    GL_COLOR_ATTACHMENT0_OES
    #define GL_FRAMEBUFFER_BINDING_EXT  GL_FRAMEBUFFER_BINDING_OES
