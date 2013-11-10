@@ -1,19 +1,14 @@
 #include <stdio.h>
 #include <X11/extensions/Xfixes.h>
 
-#ifndef ALLEGRO_PANDORA
-#define ALLEGRO_PANDORA
-#endif
-
-#include <allegro5/allegro.h>
-#include <allegro5/allegro_opengl.h>
-#include <allegro5/internal/aintern_iphone.h>
-#include <allegro5/internal/aintern_opengl.h>
-#include <allegro5/internal/aintern_vector.h>
-#include <allegro5/internal/aintern_pandora.h>
+#include "allegro5/allegro.h"
+#include "allegro5/allegro_opengl.h"
+#include "allegro5/internal/aintern_iphone.h"
+#include "allegro5/internal/aintern_opengl.h"
+#include "allegro5/internal/aintern_vector.h"
+#include "allegro5/internal/aintern_pandora.h"
 #include "allegro5/internal/aintern_x.h"
 #include "allegro5/internal/aintern_xwindow.h"
-#include "allegro5/internal/aintern_xcursor.h"
 
 #define PANDORA
 #define USE_EGL_RAW
@@ -40,7 +35,7 @@ void _al_pandora_setup_opengl_view(ALLEGRO_DISPLAY *d)
 
    al_identity_transform(&d->view_transform);
 
-   if (!(d->flags & ALLEGRO_USE_PROGRAMMABLE_PIPELINE)) {
+   if (!(d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
       glMatrixMode(GL_PROJECTION);
       glLoadMatrixf((float *)d->proj_transform.m);
       glMatrixMode(GL_MODELVIEW);
