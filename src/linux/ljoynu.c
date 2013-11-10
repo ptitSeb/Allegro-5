@@ -150,7 +150,9 @@ static bool is_joystick_button(int i)
       ||  (i >= BTN_GAMEPAD && i <= BTN_THUMBR)
       ||  (i >= BTN_WHEEL && i <= BTN_GEAR_UP)
 #ifndef ALLEGRO_ANDROID
+#ifndef ALLEGRO_PANDORA
       ||  (i >= BTN_TRIGGER_HAPPY && i <= BTN_TRIGGER_HAPPY40)
+#endif
 #endif
    ;
 }

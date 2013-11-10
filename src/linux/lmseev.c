@@ -34,7 +34,7 @@ ALLEGRO_DEBUG_CHANNEL("lmseev");
 #include "allegro5/platform/aintunix.h"
 #include "allegro5/platform/aintlnx.h"
 
-#ifdef ALLEGRO_RASPBERRYPI
+#if defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
 #include "allegro5/internal/aintern_system.h"
 #include "allegro5/internal/aintern_display.h"
 #include "allegro5/internal/aintern_vector.h"
