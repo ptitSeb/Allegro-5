@@ -44,6 +44,10 @@
 #include "allegro5/internal/aintern_raspberrypi.h"
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_RASPBERRYPI
 #endif
+#ifdef ALLEGRO_PANDORA
+#include "allegro5/internal/aintern_pandora.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("keyboard")
 
@@ -1027,7 +1031,7 @@ static void handle_key_press(int mycode, int unichar, int filtered,
    _al_event_source_unlock(&the_keyboard.parent.es);
 
 // FIXME?
-#ifndef ALLEGRO_RASPBERRYPI
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
    /* Toggle mouse grab key.  The system driver should not be locked here. */
    if (last_press_code && !is_repeat) {
       ALLEGRO_SYSTEM_XGLX *system = (void *)al_get_system_driver();

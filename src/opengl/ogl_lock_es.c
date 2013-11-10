@@ -293,7 +293,7 @@ void _al_ogl_unlock_region_old_gles(ALLEGRO_BITMAP *bitmap)
 
    if (ogl_bitmap->is_backbuffer) {
       ALLEGRO_DEBUG("Unlocking backbuffer\n");
-      if (IS_RASPBERRYPI)
+      if ((IS_RASPBERRYPI) || (IS_PANDORA))
          ogl_unlock_region_old_rpi_backbuffer(bitmap, disp);
       else
          ogl_unlock_region_old_gles_backbuffer(bitmap);
@@ -408,10 +408,17 @@ static void ogl_unlock_region_old_gles_backbuffer(ALLEGRO_BITMAP *bitmap)
 
    glGenTextures(1, &tmp_tex);
    glBindTexture(GL_TEXTURE_2D, tmp_tex);
+   #ifdef ALLEGRO_PANDORA
+   glTexImage2D(GL_TEXTURE_2D, 0, _al_ogl_get_glformat(lock_format, 2),
+      bitmap->lock_w, bitmap->lock_h,
+      0, _al_ogl_get_glformat(lock_format, 2), _al_ogl_get_glformat(lock_format, 1),
+      ogl_bitmap->lock_buffer);
+   #else
    glTexImage2D(GL_TEXTURE_2D, 0, _al_ogl_get_glformat(lock_format, 0),
       bitmap->lock_w, bitmap->lock_h,
       0, _al_ogl_get_glformat(lock_format, 2), _al_ogl_get_glformat(lock_format, 1),
       ogl_bitmap->lock_buffer);
+   #endif
    e = glGetError();
    if (e) {
       printf("glTexImage2D failed: %d\n", e);

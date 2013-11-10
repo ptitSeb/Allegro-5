@@ -32,7 +32,13 @@
    #define IS_RASPBERRYPI     (false)
 #endif
 
-#if defined(ALLEGRO_ANDROID) || defined(ALLEGRO_RASPBERRYPI)
+#ifdef ALLEGRO_PANDORA
+   #define IS_PANDORA     (true)
+#else
+   #define IS_PANDORA     (false)
+#endif
+
+#if defined(ALLEGRO_ANDROID) || defined(ALLEGRO_RASPBERRYPI) || defined(ALLEGRO_PANDORA)
    #define UNLESS_ANDROID_OR_RPI(x) (0)
 #else
    #define UNLESS_ANDROID_OR_RPI(x) (x)

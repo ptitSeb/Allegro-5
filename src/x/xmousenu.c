@@ -37,6 +37,12 @@
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_RASPBERRYPI
 #define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_RASPBERRYPI
 #endif
+#ifdef ALLEGRO_PANDORA
+#include "allegro5/internal/aintern_pandora.h"
+#include "allegro5/internal/aintern_vector.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
+#define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_PANDORA
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("mouse")
 
