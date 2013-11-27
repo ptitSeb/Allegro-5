@@ -62,7 +62,7 @@ static void pando_shutdown_system(void)
 {
 
    ALLEGRO_SYSTEM *s = al_get_system_driver();
-   ALLEGRO_SYSTEM_PANDORA *spi = (ALLEGRO_SYSTEM_PANDORA*)s;
+   ALLEGRO_SYSTEM_PANDORA *spnd = (ALLEGRO_SYSTEM_PANDORA*)s;
 
    ALLEGRO_INFO("shutting down.\n");
 
@@ -76,15 +76,13 @@ static void pando_shutdown_system(void)
    _al_vector_free(&s->displays);
 
    if (getenv("DISPLAY")) {
-      _al_thread_join(&spi->thread);
-      XCloseDisplay(spi->x11display);
+      _al_thread_join(&spnd->thread);
+      XCloseDisplay(spnd->x11display);
    }
-   
-//   bcm_host_deinit();
 
    raise(SIGINT);
 
-   al_free(spi);
+   al_free(spnd);
 
 }
 
@@ -166,6 +164,29 @@ static ALLEGRO_DISPLAY_MODE *pando_get_display_mode(int mode, ALLEGRO_DISPLAY_MO
    return dm;
 }
 
+static ALLEGRO_MOUSE_CURSOR *pando_create_mouse_cursor(ALLEGRO_BITMAP *bmp, int focus_x_ignored, int focus_y_ignored)
+{
+   (void)focus_x_ignored;
+   (void)focus_y_ignored;
+
+   ALLEGRO_STATE state;
+   al_store_state(&state, ALLEGRO_STATE_NEW_BITMAP_PARAMETERS | ALLEGRO_STATE_TARGET_BITMAP);
+   al_set_new_bitmap_format(ALLEGRO_PIXEL_FORMAT_ARGB_8888);
+   al_set_new_bitmap_flags(ALLEGRO_MEMORY_BITMAP);
+   ALLEGRO_BITMAP *cursor_bmp = al_clone_bitmap(bmp);
+   ALLEGRO_MOUSE_CURSOR_PANDORA *cursor = al_malloc(sizeof(ALLEGRO_MOUSE_CURSOR_PANDORA));
+   cursor->bitmap = cursor_bmp;
+   al_restore_state(&state);
+   return (ALLEGRO_MOUSE_CURSOR *)cursor;
+}
+
+static void pando_destroy_mouse_cursor(ALLEGRO_MOUSE_CURSOR *cursor)
+{
+   ALLEGRO_MOUSE_CURSOR_PANDORA *pnd_cursor = (void *)cursor;
+   al_destroy_bitmap(pnd_cursor->bitmap);
+   al_free(pnd_cursor);
+}
+
 //ALLEGRO_MOUSE_DRIVER _al_mousedrv_linux_evdev;
 
 /* Internal function to get a reference to this driver. */
@@ -186,8 +207,8 @@ ALLEGRO_SYSTEM_INTERFACE *_al_system_pandora_driver(void)
    pando_vt->shutdown_system = pando_shutdown_system;
    pando_vt->get_num_video_adapters = pando_get_num_video_adapters;
    pando_vt->get_monitor_info = pando_get_monitor_info;
-   pando_vt->create_mouse_cursor = _al_xwin_create_mouse_cursor; // FIXME
-   pando_vt->destroy_mouse_cursor = _al_xwin_destroy_mouse_cursor; // FIXME
+   pando_vt->create_mouse_cursor = pando_create_mouse_cursor;//_al_xwin_create_mouse_cursor; // FIXME
+   pando_vt->destroy_mouse_cursor = pando_destroy_mouse_cursor;//_al_xwin_destroy_mouse_cursor; // FIXME
    pando_vt->get_cursor_position = pando_get_cursor_position; // FIXME
    pando_vt->grab_mouse = _al_xwin_grab_mouse;
    pando_vt->ungrab_mouse = _al_xwin_ungrab_mouse;

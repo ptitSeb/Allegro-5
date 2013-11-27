@@ -197,6 +197,7 @@ static void setup_state(const char* vtxs, const ALLEGRO_VERTEX_DECL* decl, ALLEG
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       if(decl) {
          ALLEGRO_VERTEX_ELEMENT* e;
@@ -245,6 +246,7 @@ static void setup_state(const char* vtxs, const ALLEGRO_VERTEX_DECL* decl, ALLEG
          glTexCoordPointer(2, GL_FLOAT, sizeof(ALLEGRO_VERTEX), vtxs + offsetof(ALLEGRO_VERTEX, u));
       }
    }
+#endif
 
    if (texture) {
       GLuint gl_texture = al_get_opengl_texture(texture);
@@ -310,6 +312,7 @@ static void setup_state(const char* vtxs, const ALLEGRO_VERTEX_DECL* decl, ALLEG
          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 #endif
       }
+#ifndef ALLEGRO_NO_GLES1
       else {
          glMatrixMode(GL_TEXTURE);
          glLoadMatrixf(mat[0]);
@@ -319,6 +322,7 @@ static void setup_state(const char* vtxs, const ALLEGRO_VERTEX_DECL* decl, ALLEG
          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
       }
+#endif
    } else {
       glBindTexture(GL_TEXTURE_2D, 0);
    }
@@ -348,12 +352,14 @@ static void revert_state(ALLEGRO_BITMAP* texture)
             glUniform1i(display->ogl_extras->varlocs.use_tex_loc, 0);
 #endif
       }
+#ifndef ALLEGRO_NO_GLES1
       else {
          glDisable(GL_TEXTURE_2D);
          glMatrixMode(GL_TEXTURE);
          glLoadIdentity();
          glMatrixMode(GL_MODELVIEW);
       }
+#endif
    }
 
    if (display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
@@ -366,11 +372,13 @@ static void revert_state(ALLEGRO_BITMAP* texture)
          glDisableVertexAttribArray(display->ogl_extras->varlocs.texcoord_loc);
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glDisableClientState(GL_COLOR_ARRAY);
       glDisableClientState(GL_VERTEX_ARRAY);
       glDisableClientState(GL_TEXTURE_COORD_ARRAY);
    }
+#endif
 }
 
 static int draw_prim_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture,

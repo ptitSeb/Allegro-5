@@ -38,7 +38,7 @@
    #define IS_PANDORA     (false)
 #endif
 
-#if defined(ALLEGRO_ANDROID) || defined(ALLEGRO_RASPBERRYPI) || defined(ALLEGRO_PANDORA)
+#if defined(ALLEGRO_ANDROID) || defined(ALLEGRO_RASPBERRYPI)
    #define UNLESS_ANDROID_OR_RPI(x) (0)
 #else
    #define UNLESS_ANDROID_OR_RPI(x) (x)
@@ -62,8 +62,21 @@
    #define glGenerateMipmapEXT         glGenerateMipmap
    #define glOrtho                     glOrthof
 #elif defined ALLEGRO_PANDORA
+   #ifdef ALLEGRO_CFG_NO_GLES2
    #define GL_COLOR_ATTACHMENT0_EXT GL_COLOR_ATTACHMENT0_OES
    #define GL_FRAMEBUFFER_COMPLETE_EXT GL_FRAMEBUFFER_COMPLETE_OES
+   #else
+   #define GL_COLOR_ATTACHMENT0_EXT    GL_COLOR_ATTACHMENT0
+   #define GL_FRAMEBUFFER_BINDING_EXT  GL_FRAMEBUFFER_BINDING
+   #define GL_FRAMEBUFFER_COMPLETE_EXT GL_FRAMEBUFFER_COMPLETE
+   #define GL_FRAMEBUFFER_EXT          GL_FRAMEBUFFER
+   #define glBindFramebufferEXT        glBindFramebuffer
+   #define glCheckFramebufferStatusEXT glCheckFramebufferStatus
+   #define glDeleteFramebuffersEXT     glDeleteFramebuffers
+   #define glFramebufferTexture2DEXT   glFramebufferTexture2D
+   #define glGenFramebuffersEXT        glGenFramebuffers
+   #define glGenerateMipmapEXT         glGenerateMipmap
+   #endif
    #define glOrtho glOrthof
 #elif defined ALLEGRO_CFG_OPENGLES
    #define GL_COLOR_ATTACHMENT0_EXT    GL_COLOR_ATTACHMENT0_OES

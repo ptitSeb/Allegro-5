@@ -91,10 +91,12 @@ static void vert_ptr_on(ALLEGRO_DISPLAY *display, int n, GLint t, int stride, vo
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glEnableClientState(GL_VERTEX_ARRAY);
       glVertexPointer(n, t, stride, v);
    }
+#endif
 }
 
 static void vert_ptr_off(ALLEGRO_DISPLAY *display)
@@ -106,9 +108,11 @@ static void vert_ptr_off(ALLEGRO_DISPLAY *display)
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glDisableClientState(GL_VERTEX_ARRAY);
    }
+#endif
 }
 
 static void color_ptr_on(ALLEGRO_DISPLAY *display, int n, GLint t, int stride, void *v)
@@ -121,10 +125,12 @@ static void color_ptr_on(ALLEGRO_DISPLAY *display, int n, GLint t, int stride, v
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glEnableClientState(GL_COLOR_ARRAY);
       glColorPointer(n, t, stride, v);
    }
+#endif
 }
 
 static void color_ptr_off(ALLEGRO_DISPLAY *display)
@@ -136,9 +142,11 @@ static void color_ptr_off(ALLEGRO_DISPLAY *display)
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glDisableClientState(GL_COLOR_ARRAY);
    }
+#endif
 }
 
 static void tex_ptr_on(ALLEGRO_DISPLAY *display, int n, GLint t, int stride, void *v)
@@ -151,10 +159,12 @@ static void tex_ptr_on(ALLEGRO_DISPLAY *display, int n, GLint t, int stride, voi
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glEnableClientState(GL_TEXTURE_COORD_ARRAY);
       glTexCoordPointer(n, t, stride, v);
    }
+#endif
 }
 
 static void tex_ptr_off(ALLEGRO_DISPLAY *display)
@@ -166,9 +176,11 @@ static void tex_ptr_off(ALLEGRO_DISPLAY *display)
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glDisableClientState(GL_TEXTURE_COORD_ARRAY);
    }
+#endif
 }
 
 /* There's a very nasty bug in Android 2.1 that makes glClear cause
@@ -178,6 +190,7 @@ static void tex_ptr_off(ALLEGRO_DISPLAY *display)
 static void ogl_clear_android_2_1_workaround(ALLEGRO_DISPLAY *d,
    float r, float g, float b, float a)
 {
+#ifndef ALLEGRO_PANDORA
    GLfloat v[8] = {
       0, d->h,
       0, 0,
@@ -222,6 +235,7 @@ static void ogl_clear_android_2_1_workaround(ALLEGRO_DISPLAY *d,
 
    al_set_projection_transform(d, &bak1);
    al_use_transform(&bak2);
+#endif
 }
 
 static void ogl_clear(ALLEGRO_DISPLAY *d, ALLEGRO_COLOR *color)
@@ -246,10 +260,12 @@ static void ogl_clear(ALLEGRO_DISPLAY *d, ALLEGRO_COLOR *color)
 
    al_unmap_rgba_f(*color, &r, &g, &b, &a);
 
+   #ifndef ALLEGRO_PANDORA
    if (ogl_target->is_backbuffer && IS_ANDROID_AND(_al_android_is_os_2_1())) {
       ogl_clear_android_2_1_workaround(d, r, g, b, a);
       return;
    }
+   #endif
 
    glClearColor(r, g, b, a);
    glClear(GL_COLOR_BUFFER_BIT);
@@ -339,9 +355,11 @@ static void ogl_flush_vertex_cache(ALLEGRO_DISPLAY *disp)
       }
 #endif
    }
+#ifndef ALLEGRO_NO_GLES1
    else {
       glEnable(GL_TEXTURE_2D);
    }
+#endif
 
    glGetIntegerv(GL_TEXTURE_BINDING_2D, (GLint*)&current_texture);
    if (current_texture != disp->cache_texture) {
@@ -408,8 +426,10 @@ static void ogl_flush_vertex_cache(ALLEGRO_DISPLAY *disp)
       color_ptr_on(disp, 4, GL_FLOAT, sizeof(ALLEGRO_OGL_BITMAP_VERTEX),
          (char*)(disp->vertex_cache) + offsetof(ALLEGRO_OGL_BITMAP_VERTEX, r));
 
+#ifndef ALLEGRO_NO_GLES1
       if (!(disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE))
          glDisableClientState(GL_NORMAL_ARRAY);
+#endif
    }
 
    glGetError(); /* clear error */
@@ -479,9 +499,10 @@ static void ogl_update_transformation(ALLEGRO_DISPLAY* disp,
 #endif
       return;
    }
-
+#ifndef ALLEGRO_NO_GLES1
    glMatrixMode(GL_MODELVIEW);
    glLoadMatrixf((float *)tmp.m);
+#endif
 }
 
 static void ogl_set_projection(ALLEGRO_DISPLAY *d)
@@ -499,9 +520,11 @@ static void ogl_set_projection(ALLEGRO_DISPLAY *d)
       return;
    }
 
+#ifndef ALLEGRO_NO_GLES1
    glMatrixMode(GL_PROJECTION);
    glLoadMatrixf((float *)d->proj_transform.m);
    glMatrixMode(GL_MODELVIEW);
+#endif
 }
 
 static void ogl_clear_depth_buffer(ALLEGRO_DISPLAY *display, float x)

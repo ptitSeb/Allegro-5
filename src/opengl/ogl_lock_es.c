@@ -193,7 +193,7 @@ ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_old_gles(ALLEGRO_BITMAP *bitmap,
              * This adds yet more overhead, but AFAICT it fails any other way.
              * Test device was gen 1 Galaxy Tab. Also read 16x16 minimum.
              */
-            if (IS_ANDROID) {
+            if (IS_ANDROID || IS_PANDORA) {
                glPixelStorei(GL_PACK_ALIGNMENT, 4);
                w = pot(w);
                while (w < 16) w = pot(w+1);
@@ -293,10 +293,14 @@ void _al_ogl_unlock_region_old_gles(ALLEGRO_BITMAP *bitmap)
 
    if (ogl_bitmap->is_backbuffer) {
       ALLEGRO_DEBUG("Unlocking backbuffer\n");
-      if ((IS_RASPBERRYPI) || (IS_PANDORA))
+#ifndef ALLEGRO_NO_GLES1
+      if ((IS_RASPBERRYPI) /*|| (IS_PANDORA)*/)
+#endif
          ogl_unlock_region_old_rpi_backbuffer(bitmap, disp);
+#ifndef ALLEGRO_NO_GLES1
       else
          ogl_unlock_region_old_gles_backbuffer(bitmap);
+#endif
    }
    else {
       GLint fbo;
@@ -312,7 +316,7 @@ void _al_ogl_unlock_region_old_gles(ALLEGRO_BITMAP *bitmap)
 
       glBindTexture(GL_TEXTURE_2D, ogl_bitmap->texture);
 
-      if (IS_ANDROID && !(bitmap->lock_flags & ALLEGRO_LOCK_WRITEONLY)) {
+      if ((IS_ANDROID || IS_PANDORA) && !(bitmap->lock_flags & ALLEGRO_LOCK_WRITEONLY)) {
          w = pot(w);
       }
 
@@ -398,7 +402,7 @@ Done:
    ogl_bitmap->lock_buffer = NULL;
 }
 
-
+#ifndef ALLEGRO_NO_GLES1
 static void ogl_unlock_region_old_gles_backbuffer(ALLEGRO_BITMAP *bitmap)
 {
    ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap = bitmap->extra;
@@ -409,9 +413,18 @@ static void ogl_unlock_region_old_gles_backbuffer(ALLEGRO_BITMAP *bitmap)
    glGenTextures(1, &tmp_tex);
    glBindTexture(GL_TEXTURE_2D, tmp_tex);
    #ifdef ALLEGRO_PANDORA
-   glTexImage2D(GL_TEXTURE_2D, 0, _al_ogl_get_glformat(lock_format, 2),
+ printf("glTexImage2D(GL_TEXTURE_2D, %i, 0x%x, %i, %i, %i, 0x%x, 0x%x, %p)\n", 0, _al_ogl_get_glformat(lock_format, 2),
       bitmap->lock_w, bitmap->lock_h,
       0, _al_ogl_get_glformat(lock_format, 2), _al_ogl_get_glformat(lock_format, 1),
+      ogl_bitmap->lock_buffer);
+   glTexImage2D(GL_TEXTURE_2D, 0, _al_ogl_get_glformat(lock_format, 2),
+      pot(bitmap->lock_w), pot(bitmap->lock_h),
+      0, _al_ogl_get_glformat(lock_format, 2), _al_ogl_get_glformat(lock_format, 1),
+      0);
+   glTexSubImage2D(GL_TEXTURE_2D, 0, 
+      0, 0, 
+      bitmap->lock_w, bitmap->lock_h,
+      _al_ogl_get_glformat(lock_format, 2), _al_ogl_get_glformat(lock_format, 1),
       ogl_bitmap->lock_buffer);
    #else
    glTexImage2D(GL_TEXTURE_2D, 0, _al_ogl_get_glformat(lock_format, 0),
@@ -433,7 +446,7 @@ static void ogl_unlock_region_old_gles_backbuffer(ALLEGRO_BITMAP *bitmap)
 
    glDeleteTextures(1, &tmp_tex);
 }
-
+#endif
 
 static void ogl_unlock_region_old_rpi_backbuffer(ALLEGRO_BITMAP *bitmap,
    ALLEGRO_DISPLAY *disp)

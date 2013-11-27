@@ -151,7 +151,7 @@ static void initialize_tls_values(thread_local_state *tls)
 
 #if defined(ALLEGRO_CFG_DLL_TLS)
    #include "tls_dll.inc"
-#elif defined(ALLEGRO_MACOSX) || defined(ALLEGRO_IPHONE) || defined(ALLEGRO_ANDROID) || defined(ALLEGRO_RASPBERRYPI)
+#elif defined(ALLEGRO_MACOSX) || defined(ALLEGRO_IPHONE) || defined(ALLEGRO_ANDROID) || defined(ALLEGRO_RASPBERRYPI) || defined(ALLEGRO_PANDORA)
    #include "tls_pthread.inc"
 #else
    #include "tls_native.inc"

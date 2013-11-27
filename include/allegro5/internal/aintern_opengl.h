@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 #if defined ALLEGRO_PANDORA
+#ifdef ALLEGRO_CFG_NO_GLES2
 GL_API PFNGLBLENDEQUATIONOESPROC glBlendEquation;
 GL_API PFNGLBLENDFUNCSEPARATEOESPROC glBlendFuncSeparate;
 GL_API PFNGLBLENDEQUATIONSEPARATEOESPROC glBlendEquationSeparate;
@@ -20,6 +21,20 @@ GL_API PFNGLGENFRAMEBUFFERSOESPROC glGenFramebuffersEXT;
 GL_API PFNGLCHECKFRAMEBUFFERSTATUSOESPROC glCheckFramebufferStatusEXT;
 GL_API PFNGLFRAMEBUFFERTEXTURE2DOESPROC glFramebufferTexture2DEXT;
 GL_API PFNGLDRAWTEXIOESPROC glDrawTexiOES;
+#else
+//#define glGenerateMipmapEXT		glGenerateMipmap
+// All functions to emulate GLES1.1 over GLES2
+/* MatrixMode */
+#if 0
+#define GL_MODELVIEW                      0x1700
+#define GL_PROJECTION                     0x1701
+#define GL_TEXTURE                        0x1702
+void glMatrixMode (GLenum mode);
+void glLoadMatrixf (const GLfloat *m);
+#else
+#define ALLEGRO_NO_GLES1
+#endif
+#endif
 #endif
 
 enum {

@@ -17,12 +17,18 @@ SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 SET(ALLEGRO_CFG_OPENGLES 1)
-SET(ALLEGRO_CFG_NO_GLES2 1)
+#SET(ALLEGRO_CFG_NO_GLES2 1)
 
 SET(ALLEGRO_EXCLUDE_GLX 1)
 
-set(OPENGL_LIBRARIES "/usr/lib/libGLES_CM.so;/usr/lib/libEGL.so")
-set(OPENGL_gl_LIBRARY "/usr/lib/libGLES_CM.so;/usr/lib/libEGL.so")
+if(WANT_GLES2)
+	set(OPENGL_LIBRARIES "/usr/lib/libGLESv2.so;/usr/lib/libEGL.so")
+	set(OPENGL_gl_LIBRARY "/usr/lib/libGLESv2.so;/usr/lib/libEGL.so")
+else(WANT_GLES2)
+	SET(ALLEGRO_CFG_NO_GLES2 1)
+	set(OPENGL_LIBRARIES "/usr/lib/libGLES_CM.so;/usr/lib/libEGL.so")
+	set(OPENGL_gl_LIBRARY "/usr/lib/libGLES_CM.so;/usr/lib/libEGL.so")
+endif(WANT_GLES2)
 set(OPENGL_glu_LIBRARY "")
 
 include_directories(

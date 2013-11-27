@@ -299,10 +299,14 @@ void al_uninstall_system(void)
     */
 
    _al_run_destructors(_al_dtor_list);
+printf("_al_run_destructors(_al_dtor_list);\n");
    _al_run_exit_funcs();
+printf("_al_run_exit_funcs();\n");
    _al_shutdown_destructors(_al_dtor_list);
+printf("_al_shutdown_destructors(_al_dtor_list);\n");
    _al_dtor_list = NULL;
    _al_shutdown_logging();
+printf("_al_shutdown_logging();\n");
 
    /* shutdown_system_driver is registered as an exit func so we don't need
     * to do any more here.

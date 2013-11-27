@@ -12,7 +12,11 @@
 
 #define PANDORA
 #define USE_EGL_RAW
+#ifdef ALLEGRO_CFG_NO_GLES2
 #define USE_GLES1
+#else
+#define USE_GLES2
+#endif
 #include "eglport.h"
 
 #define PITCH 128
@@ -34,13 +38,14 @@ void _al_pandora_setup_opengl_view(ALLEGRO_DISPLAY *d)
    al_orthographic_transform(&d->proj_transform, 0, 0, -1, d->w, d->h, 1);
 
    al_identity_transform(&d->view_transform);
-
+#ifdef ALLEGRO_CFG_NO_GLES2
    if (!(d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
       glMatrixMode(GL_PROJECTION);
       glLoadMatrixf((float *)d->proj_transform.m);
       glMatrixMode(GL_MODELVIEW);
       glLoadMatrixf((float *)d->view_transform.m);
    }
+#endif
 }
 
 /* Helper to set up GL state as we want it. */
@@ -75,6 +80,9 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
     display->ogl_extras = ogl;
     display->vt = _al_get_pandora_display_interface();
     display->flags = al_get_new_display_flags();
+	#ifndef ALLEGRO_CFG_NO_GLES2
+	display->flags |= ALLEGRO_PROGRAMMABLE_PIPELINE;
+	#endif
 //    if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
 //        _al_raspberrypi_get_screen_size(adapter, &w, &h);
 //    }
@@ -101,11 +109,11 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
    display->w = w;
    display->h = h;
 
-   if (EGL_Open()) {
+/*   if (EGL_Open(w, h)) {
       // FIXME: cleanup
       return NULL;
    }
-   
+*/   
    if (getenv("DISPLAY")) {
       _al_mutex_lock(&system->lock);
       Window root = RootWindow(
@@ -130,11 +138,6 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
          system->x11display,
          d->window,
          PointerMotionMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask
-/*
-         StructureNotifyMask | FocusChangeMask | PointerMotionMask
-         | KeyPressMask | KeyReleaseMask | ButtonPressMask
-         | ButtonReleaseMask | PropertyChangeMask
-*/
       );
       XMapWindow(system->x11display, d->window);
       //XSetInputFocus(system->x11display, d->window, RevertToParent, CurrentTime);
@@ -147,20 +150,14 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
       _al_mutex_unlock(&system->lock);
    }
 
-   if (EGL_Init()) {
+   if (EGL_Open(w, h)) {
 	   return NULL;
    }
-//printf("EGL_Init done\n");
    al_grab_mouse(display);
-//printf("al_grab_mouse\n");
-//printf("_al_ogl_manage_extensions(%x)\n",display);
    _al_ogl_manage_extensions(display);
-//printf("_al_ogl_manage_extensions\n");
    _al_ogl_set_extensions(ogl->extension_api);
-//printf("_al_ogl_set_extensions\n");
 
    setup_gl(display);
-//printf("setup_gl\n");
 
    al_set_blender(ALLEGRO_ADD, ALLEGRO_ONE, ALLEGRO_INVERSE_ALPHA);
     
@@ -184,6 +181,7 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
 	output = glGetString(GL_EXTENSIONS);
 	printf( "GL_EXT: %s\n", output);
 	
+	#ifdef ALLEGRO_CFG_NO_GLES2
 	// Create the glExtentions
 	printf("Attaching glExtension...\n");
 	glBlendEquation = (PFNGLBLENDEQUATIONOESPROC) eglGetProcAddress("glBlendEquationOES");
@@ -217,6 +215,7 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
 	if (glDrawTexiOES == NULL)
 		printf("*** NO glDrawTexiOES found !!!\n");
 	printf("Done with extensions\n");	
+	#endif
 	
    return display;
 }
@@ -386,7 +385,7 @@ static bool pandora_acknowledge_resize(ALLEGRO_DISPLAY *d)
    _al_pandora_setup_opengl_view(d);
    return true;
 }
-/*
+
 static bool pandora_set_mouse_cursor(ALLEGRO_DISPLAY *display,
                                   ALLEGRO_MOUSE_CURSOR *cursor)
 {
@@ -402,7 +401,7 @@ static bool pandora_set_system_mouse_cursor(ALLEGRO_DISPLAY *display,
     (void)cursor_id;
     return false;
 }
-*/
+
 static bool pandora_show_mouse_cursor(ALLEGRO_DISPLAY *display)
 {
     ALLEGRO_DISPLAY_PANDORA *pidisplay = (ALLEGRO_DISPLAY_PANDORA *)display;
@@ -457,13 +456,12 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void)
     _al_ogl_add_drawing_functions(vt);
     // stub mouse function
     // add default X mouse functions
-    _al_xwin_add_cursor_functions(vt);
-/*    vt->set_mouse_cursor = pandora_set_mouse_cursor;
-    vt->set_system_mouse_cursor = pandora_set_system_mouse_cursor;*/
+//    _al_xwin_add_cursor_functions(vt);
+    vt->set_mouse_cursor = pandora_set_mouse_cursor;
+    vt->set_system_mouse_cursor = pandora_set_system_mouse_cursor;
 	// overload show/hide functions
     vt->show_mouse_cursor = pandora_show_mouse_cursor;
     vt->hide_mouse_cursor = pandora_hide_mouse_cursor;
     
     return vt;
 }
-

@@ -60,8 +60,10 @@
 
 #elif defined ALLEGRO_ANDROID || defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA
 
+#if (defined ALLEGRO_PANDORA && defined ALLEGRO_CFG_NO_GLES2) || !defined ALLEGRO_PANDORA
 #include <GLES/gl.h>
 #include <GLES/glext.h>
+#endif
 
 #ifndef ALLEGRO_CFG_NO_GLES2
 #include <GLES2/gl2.h>
@@ -75,6 +77,7 @@
 #define GL_RGBA8 GL_RGBA8_OES
 
 #ifndef ALLEGRO_RASPBERRYPI
+#ifdef ALLEGRO_CFG_NO_GLES2
 #define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING_OES
 #define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER_OES
 #define glBlendEquation glBlendEquationOES
@@ -83,6 +86,19 @@
 #define glGenerateMipmapEXT glGenerateMipmapOES
 #define glBindFramebufferEXT glBindFramebufferOES
 #define glDeleteFramebuffersEXT glDeleteFramebuffersOES
+#else
+#define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING
+#define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER
+#define glBlendEquation glBlendEquation
+#define glBlendFuncSeparate glBlendFuncSeparate
+#define glBlendEquationSeparate glBlendEquationSeparate
+#define glGenerateMipmapEXT glGenerateMipmap
+#define glBindFramebufferEXT glBindFramebuffer
+#define glDeleteFramebuffersEXT glDeleteFramebuffers
+#ifndef GLchar
+#define GLchar	char
+#endif
+#endif
 #else
 #define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING
 #define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER

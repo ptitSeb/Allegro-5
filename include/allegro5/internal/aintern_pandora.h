@@ -7,12 +7,12 @@
 #include <allegro5/internal/aintern_mouse.h>
 
 #include <X11/Xlib.h>
-
+/*
 #ifndef ALLEGRO_PANDORA
 #define ALLEGRO_PANDORA
 //#define ALLEGRO_RASPBERRYPI
 #endif
-
+*/
 typedef struct ALLEGRO_SYSTEM_PANDORA {
    ALLEGRO_SYSTEM system;
    Display *x11display;
@@ -44,12 +44,16 @@ typedef struct ALLEGRO_DISPLAY_PANDORA {
    Atom wm_delete_window_atom;
 } ALLEGRO_DISPLAY_PANDORA;
 
+typedef struct ALLEGRO_MOUSE_CURSOR_PANDORA {
+   ALLEGRO_BITMAP *bitmap;
+} ALLEGRO_MOUSE_CURSOR_PANDORA;
+
 ALLEGRO_SYSTEM_INTERFACE *_al_system_pandora_driver(void);
 ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void);
 void _al_pandora_get_screen_info(int *dx, int *dy, int *screen_width, int *screen_height);
 
 bool _al_evdev_set_mouse_range(int x1, int y1, int x2, int y2);
 
-static ALLEGRO_MOUSE_DRIVER _al_mousedrv_linux_evdev;
+ALLEGRO_MOUSE_DRIVER _al_mousedrv_linux_evdev;
 
 #endif

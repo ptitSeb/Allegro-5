@@ -100,6 +100,7 @@ ALLEGRO_DISPLAY *al_create_display(int w, int h)
    if (display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
       display->default_shader = _al_create_default_shader(display->flags);
       if (!display->default_shader) {
+printf("failed to create default shader\n");
          al_destroy_display(display);
          return NULL;
       }

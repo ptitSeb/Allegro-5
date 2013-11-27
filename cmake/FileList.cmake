@@ -191,9 +191,10 @@ set(ALLEGRO_SRC_PANDORA_FILES
    src/x/xmousenu.c
    src/x/xwindow.c
    src/x/xcursor.c
-   src/pandora/eglport.c
+   src/pandora/eglport.cpp
    src/pandora/pandosystem.c
    src/pandora/pandodisplay.c
+   src/pandora/gles11emu.cpp
    )
 
 set(ALLEGRO_INCLUDE_ALLEGRO_FILES

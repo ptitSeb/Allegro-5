@@ -176,10 +176,12 @@ char const *_al_gl_error_string(GLenum e)
       ERR(GL_INVALID_ENUM)
       ERR(GL_INVALID_VALUE)
       ERR(GL_INVALID_OPERATION)
+#ifdef ALLEGRO_CFG_NO_GLES2
       ERR(GL_STACK_OVERFLOW)
       ERR(GL_STACK_UNDERFLOW)
+#endif
       ERR(GL_OUT_OF_MEMORY)
-#ifndef ALLEGRO_CFG_NO_GLES2
+#ifdef ALLEGRO_CFG_NO_GLES2
       ERR(GL_INVALID_FRAMEBUFFER_OPERATION)
 #endif
    }
@@ -404,6 +406,10 @@ static bool ogl_upload_bitmap(ALLEGRO_BITMAP *bitmap)
                     ogl_bitmap->texture,
                     ogl_bitmap->true_w, ogl_bitmap->true_h,
                     _al_pixel_format_name(bitmap->format));
+/*printf("Created new OpenGL texture %u (%dx%d, format %s)\n",
+                    ogl_bitmap->texture,
+                    ogl_bitmap->true_w, ogl_bitmap->true_h,
+                    _al_pixel_format_name(bitmap->format));*/
       }
    }
    glBindTexture(GL_TEXTURE_2D, ogl_bitmap->texture);
@@ -453,12 +459,16 @@ static bool ogl_upload_bitmap(ALLEGRO_BITMAP *bitmap)
        * texture parameter.  GL_GENERATE_MIPMAP is deprecated in GL 3.0 so we
        * may want to use the new method in other cases as well.
        */
+#ifdef ALLEGRO_CFG_NO_GLES2
       if (al_get_opengl_extension_list()->ALLEGRO_GL_EXT_framebuffer_object) {
+#endif
          post_generate_mipmap = true;
+#ifdef ALLEGRO_CFG_NO_GLES2
       }
       else {
          glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
       }
+#endif
    }
 
    /* If there's unused space around the bitmap, we need to clear it
