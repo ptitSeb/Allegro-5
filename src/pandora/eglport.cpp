@@ -24,12 +24,17 @@
  */
 
 #include "eglport.h"
+#include "allegro5/allegro.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define USE_GLES2 1
+#ifdef ALLEGRO_CFG_NO_GLES2
+#define USE_GLES1	1
+#else
+#define USE_GLES2	1
+#endif
 #define PANDORA	1
 
 #if defined(USE_EGL_SDL)
