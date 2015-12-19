@@ -29,7 +29,15 @@ ALLEGRO_STATIC_ASSERT(utime,
 
 
 /* Marks the time Allegro was initialised, for al_get_time(). */
+#ifdef ALLEGRO_PANDORA
+#define USE_CLOCK
+#endif
+
+#ifdef USE_CLOCK
+struct timespec _al_unix_initial_time;
+#else
 struct timeval _al_unix_initial_time;
+#endif
 
 
 
@@ -38,7 +46,11 @@ struct timeval _al_unix_initial_time;
  */
 void _al_unix_init_time(void)
 {
+   #ifdef USE_CLOCK
+   clock_gettime(CLOCK_MONOTONIC, &_al_unix_initial_time);
+   #else
    gettimeofday(&_al_unix_initial_time, NULL);
+   #endif
 }
 
 
@@ -47,12 +59,19 @@ void _al_unix_init_time(void)
  */
 double al_get_time(void)
 {
-   struct timeval now;
    double time;
 
+   #ifdef USE_CLOCK
+   struct timespec now;
+   clock_gettime(CLOCK_MONOTONIC, &now);
+   time = (double) (now.tv_sec - _al_unix_initial_time.tv_sec)
+      + (double) (now.tv_nsec - _al_unix_initial_time.tv_nsec) * 1.0e-9;
+   #else
+   struct timeval now;
    gettimeofday(&now, NULL);
    time = (double) (now.tv_sec - _al_unix_initial_time.tv_sec)
       + (double) (now.tv_usec - _al_unix_initial_time.tv_usec) * 1.0e-6;
+   #endif
    return time;
 }
 
@@ -76,23 +95,39 @@ void al_rest(double seconds)
 void al_init_timeout(ALLEGRO_TIMEOUT *timeout, double seconds)
 {
     ALLEGRO_TIMEOUT_UNIX *ut = (ALLEGRO_TIMEOUT_UNIX *) timeout;
+    #ifdef USE_CLOCK
+    struct timespec now;
+    #else
     struct timeval now;
+    #endif
     double integral;
     double frac;
 
     ASSERT(ut);
 
+    #ifdef USE_CLOCK
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    #else
     gettimeofday(&now, NULL);
+    #endif
 
     if (seconds <= 0.0) {
 	ut->abstime.tv_sec = now.tv_sec;
+  #ifdef USE_CLOCK
+  ut->abstime.tv_nsec = now.tv_nsec;
+  #else
 	ut->abstime.tv_nsec = now.tv_usec * 1000;
+  #endif
     }
     else {
 	frac = modf(seconds, &integral);
 
 	ut->abstime.tv_sec = now.tv_sec + integral;
+  #ifdef USE_CLOCK
+  ut->abstime.tv_nsec = (now.tv_nsec) + (frac * 1000000000L);
+  #else
 	ut->abstime.tv_nsec = (now.tv_usec * 1000) + (frac * 1000000000L);
+  #endif
 	ut->abstime.tv_sec += ut->abstime.tv_nsec / 1000000000L;
 	ut->abstime.tv_nsec = ut->abstime.tv_nsec % 1000000000L;
     }
