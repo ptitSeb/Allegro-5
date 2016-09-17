@@ -18,6 +18,11 @@
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
 #define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_PANDORA
 #endif
+#ifdef ALLEGRO_ODROID
+#include "allegro5/internal/aintern_odroid.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_ODROID
+#define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_ODROID
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("xwindow")
 
@@ -118,7 +123,7 @@ void _al_xwin_set_fullscreen_window(ALLEGRO_DISPLAY *display, int value)
    ALLEGRO_SYSTEM_XGLX *system = (void *)al_get_system_driver();
    ALLEGRO_DISPLAY_XGLX *glx = (ALLEGRO_DISPLAY_XGLX *)display;
    Display *x11 = system->x11display;
-#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA && !defined ALLEGRO_ODROID
    int old_resize_count = glx->resize_count;
 #endif
 
@@ -143,7 +148,7 @@ void _al_xwin_set_fullscreen_window(ALLEGRO_DISPLAY *display, int value)
 
    XSendEvent(
       x11,
-#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA && !defined ALLEGRO_ODROID
       RootWindowOfScreen(ScreenOfDisplay(x11, glx->xscreen)),
 #else
       RootWindowOfScreen(ScreenOfDisplay(x11, DefaultScreen(x11))),
@@ -151,7 +156,7 @@ void _al_xwin_set_fullscreen_window(ALLEGRO_DISPLAY *display, int value)
       False,
       SubstructureRedirectMask | SubstructureNotifyMask, &xev);
 
-#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA && !defined ALLEGRO_ODROID
    if (value == 2) {
       /* Only wait for a resize if toggling. */
       _al_display_xglx_await_resize(display, old_resize_count, true);

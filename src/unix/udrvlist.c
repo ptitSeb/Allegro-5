@@ -25,6 +25,8 @@
 #include "allegro5/internal/aintern_raspberrypi.h"
 #elif defined ALLEGRO_PANDORA
 #include "allegro5/internal/aintern_pandora.h"
+#elif defined ALLEGRO_ODROID
+#include "allegro5/internal/aintern_odroid.h"
 #else
 #include "allegro5/platform/aintxglx.h"
 #endif
@@ -38,7 +40,7 @@
 void _al_register_system_interfaces(void)
 {
    ALLEGRO_SYSTEM_INTERFACE **add;
-#if defined ALLEGRO_WITH_XWINDOWS && !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
+#if defined ALLEGRO_WITH_XWINDOWS && !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA && !defined ALLEGRO_ODROID
    add = _al_vector_alloc_back(&_al_system_interfaces);
    *add = _al_system_xglx_driver();
 #elif defined ALLEGRO_RASPBERRYPI
@@ -47,6 +49,9 @@ void _al_register_system_interfaces(void)
 #elif defined ALLEGRO_PANDORA
    add = _al_vector_alloc_back(&_al_system_interfaces);
    *add = _al_system_pandora_driver();
+#elif defined ALLEGRO_ODROID
+   add = _al_vector_alloc_back(&_al_system_interfaces);
+   *add = _al_system_odroid_driver();
 #endif
 }
 

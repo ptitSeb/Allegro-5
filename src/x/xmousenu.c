@@ -43,6 +43,12 @@
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
 #define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_PANDORA
 #endif
+#ifdef ALLEGRO_ODROID
+#include "allegro5/internal/aintern_odroid.h"
+#include "allegro5/internal/aintern_vector.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_ODROID
+#define ALLEGRO_DISPLAY_XGLX ALLEGRO_DISPLAY_ODROID
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("mouse")
 

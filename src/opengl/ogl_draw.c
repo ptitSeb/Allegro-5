@@ -190,7 +190,7 @@ static void tex_ptr_off(ALLEGRO_DISPLAY *display)
 static void ogl_clear_android_2_1_workaround(ALLEGRO_DISPLAY *d,
    float r, float g, float b, float a)
 {
-#ifndef ALLEGRO_PANDORA
+#if !(defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID)
    GLfloat v[8] = {
       0, d->h,
       0, 0,
@@ -260,7 +260,7 @@ static void ogl_clear(ALLEGRO_DISPLAY *d, ALLEGRO_COLOR *color)
 
    al_unmap_rgba_f(*color, &r, &g, &b, &a);
 
-   #ifndef ALLEGRO_PANDORA
+   #if !(defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID)
    if (ogl_target->is_backbuffer && IS_ANDROID_AND(_al_android_is_os_2_1())) {
       ogl_clear_android_2_1_workaround(d, r, g, b, a);
       return;

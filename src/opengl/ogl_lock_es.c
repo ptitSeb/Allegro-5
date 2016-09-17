@@ -193,7 +193,7 @@ ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_old_gles(ALLEGRO_BITMAP *bitmap,
              * This adds yet more overhead, but AFAICT it fails any other way.
              * Test device was gen 1 Galaxy Tab. Also read 16x16 minimum.
              */
-            if (IS_ANDROID || IS_PANDORA) {
+            if (IS_ANDROID || IS_PANDORA || IS_ODROID) {
                glPixelStorei(GL_PACK_ALIGNMENT, 4);
                w = pot(w);
                while (w < 16) w = pot(w+1);
@@ -316,7 +316,7 @@ void _al_ogl_unlock_region_old_gles(ALLEGRO_BITMAP *bitmap)
 
       glBindTexture(GL_TEXTURE_2D, ogl_bitmap->texture);
 
-      if ((IS_ANDROID || IS_PANDORA) && !(bitmap->lock_flags & ALLEGRO_LOCK_WRITEONLY)) {
+      if ((IS_ANDROID || IS_PANDORA || IS_ODROID) && !(bitmap->lock_flags & ALLEGRO_LOCK_WRITEONLY)) {
          w = pot(w);
       }
 

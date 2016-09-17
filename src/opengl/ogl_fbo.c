@@ -128,7 +128,7 @@ bool _al_ogl_create_persistent_fbo(ALLEGRO_BITMAP *bitmap)
       return false;
    }
 
-#ifdef ALLEGRO_PANDORA
+#if defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID
    glBindTexture(GL_TEXTURE_2D, 0);
 #endif
    old_fbo = _al_ogl_bind_framebuffer(info->fbo);
@@ -364,7 +364,7 @@ static void setup_fbo_non_backbuffer(ALLEGRO_DISPLAY *display,
 #endif
       }
       else {
-#ifdef ALLEGRO_PANDORA
+#if defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID
 		glBindTexture(GL_TEXTURE_2D, 0);
 #endif
          glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT,

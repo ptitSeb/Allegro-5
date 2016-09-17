@@ -48,6 +48,10 @@
 #include "allegro5/internal/aintern_pandora.h"
 #define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_PANDORA
 #endif
+#ifdef ALLEGRO_ODROID
+#include "allegro5/internal/aintern_odroid.h"
+#define ALLEGRO_SYSTEM_XGLX ALLEGRO_SYSTEM_ODROID
+#endif
 
 ALLEGRO_DEBUG_CHANNEL("keyboard")
 
@@ -1031,7 +1035,7 @@ static void handle_key_press(int mycode, int unichar, int filtered,
    _al_event_source_unlock(&the_keyboard.parent.es);
 
 // FIXME?
-#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA
+#if !defined ALLEGRO_RASPBERRYPI && !defined ALLEGRO_PANDORA && !defined ALLEGRO_ODROID
    /* Toggle mouse grab key.  The system driver should not be locked here. */
    if (last_press_code && !is_repeat) {
       ALLEGRO_SYSTEM_XGLX *system = (void *)al_get_system_driver();
