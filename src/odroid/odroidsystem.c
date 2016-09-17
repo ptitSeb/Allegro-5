@@ -164,7 +164,7 @@ static ALLEGRO_DISPLAY_MODE *odroid_get_display_mode(int mode, ALLEGRO_DISPLAY_M
    return dm;
 }
 
-static ALLEGRO_MOUSE_CURSOR *odoid_create_mouse_cursor(ALLEGRO_BITMAP *bmp, int focus_x_ignored, int focus_y_ignored)
+static ALLEGRO_MOUSE_CURSOR *odroid_create_mouse_cursor(ALLEGRO_BITMAP *bmp, int focus_x_ignored, int focus_y_ignored)
 {
    (void)focus_x_ignored;
    (void)focus_y_ignored;

@@ -58,8 +58,7 @@
 #define GL_GLEXT_PROTOTYPES
 #endif
 
-#elif defined ALLEGRO_ANDROID || defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA || define ALLEGRO_ODROID
-
+#elif defined ALLEGRO_ANDROID || defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID
 #if ((defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID) && defined ALLEGRO_CFG_NO_GLES2) || !(defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID)
 #include <GLES/gl.h>
 #include <GLES/glext.h>
@@ -121,7 +120,7 @@
 
 #endif /* ALLEGRO_MACOSX */
 
-#if defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA || defined ALLEGRO_PANDORA
+#if defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #endif

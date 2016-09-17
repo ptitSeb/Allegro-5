@@ -29,7 +29,7 @@
 #include "allegro5/internal/aintern_pandora.h"
 #endif
 #ifdef ALLEGRO_ODROID	
-#include "allegro5/internal/aintern_ODROID.h"
+#include "allegro5/internal/aintern_odroid.h"
 #endif
 
 /* list the available drivers */
