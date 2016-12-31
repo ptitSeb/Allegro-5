@@ -6,6 +6,9 @@
 *.exe
 *.o
 *.so
+examples/ex*
+demos/cosmic_protector/cosmic_protector
+demos/speed/speed
 
 # Packages #
 ############
@@ -41,4 +44,9 @@ CMakeFiles
 CMakeCache.txt
 cmake_install.cmake
 Makefile
+include/allegro5/internal/aintern_acodec_cfg.h
+include/allegro5/internal/aintern_audio_cfg.h
+include/allegro5/internal/aintern_image_cfg.h
+include/allegro5/internal/aintern_ttf_cfg.h
+include/allegro5/platform/alplatf.h
 
