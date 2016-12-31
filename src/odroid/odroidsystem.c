@@ -31,8 +31,6 @@ static ALLEGRO_SYSTEM *odroid_initialize(int flags)
 
    ALLEGRO_SYSTEM_ODROID *s;
 
-//   bcm_host_init();
-
    s = (ALLEGRO_SYSTEM_ODROID*)al_calloc(1, sizeof *s);
 
    _al_vector_init(&s->system.displays, sizeof (ALLEGRO_DISPLAY_ODROID *));

@@ -8,6 +8,8 @@
 
 #include <X11/Xlib.h>
 
+#include <EGL/egl.h>
+
 typedef struct ALLEGRO_SYSTEM_ODROID {
    ALLEGRO_SYSTEM system;
    Display *x11display;
@@ -25,6 +27,10 @@ typedef struct ALLEGRO_DISPLAY_ODROID {
    ALLEGRO_DISPLAY display;
    ALLEGRO_DISPLAY_ODROID_EXTRA *extra;
    Window window;
+   /* egl stuff */
+   EGLDisplay egldisplay;
+   EGLSurface eglwindow;
+   EGLContext eglcontext;
    /* Physical size of display in pixels (gets scaled) */
    int screen_width, screen_height;
    /* Cursor stuff */

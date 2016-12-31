@@ -10,19 +10,13 @@
 #include "allegro5/internal/aintern_x.h"
 #include "allegro5/internal/aintern_xwindow.h"
 
-#define ODROID
-//#define USE_EGL_RAW
-#ifdef ALLEGRO_CFG_NO_GLES2
-#define USE_GLES1
-#else
-#define USE_GLES2
-#endif
-#include "eglport.h"
+#include "EGL/egl.h"
 
 #define PITCH 128
 #define DEFAULT_CURSOR_WIDTH 17
 #define DEFAULT_CURSOR_HEIGHT 28
 
+#pragma GCC optimize 0
 
 static ALLEGRO_DISPLAY_INTERFACE *vt;
 
@@ -65,11 +59,23 @@ static void setup_gl(ALLEGRO_DISPLAY *d)
 void _al_odroid_get_screen_info(int *dx, int *dy, int *screen_width, int *screen_height)
 {
 //printf("_al_odroid_get_screen_info(int *dx, int *dy, int *screen_width, int *screen_height)\n");
-   graphics_get_display_size(0 /* LCD */, (uint32_t *)screen_width, (uint32_t *)screen_height);
-//   (*screen_width)=800;
-//   (*screen_height)=480;
+//   graphics_get_display_size(0 /* LCD */, (uint32_t *)screen_width, (uint32_t *)screen_height);
+	// this is not right... better call egl get surface at least for the size of the width and height
+
+   ALLEGRO_SYSTEM_ODROID *system = (ALLEGRO_SYSTEM_ODROID *)al_get_system_driver();
+#if 1
+   Window root_return;
+   unsigned int border_width_return;
+   unsigned int depth_return;
+   XGetGeometry(system->x11display, RootWindow(system->x11display, DefaultScreen(system->x11display)), &root_return, 
+	dx, dy, (unsigned int*)screen_width, (unsigned int*)screen_height, &border_width_return, &depth_return);
+#else
+   (*screen_width)=XWidthOfScreen(DefaultScreenOfDisplay(system->x11display));
+   (*screen_height)=XHeightOfScreen(DefaultScreenOfDisplay(system->x11display));
    (*dx)=0;
    (*dy)=0;
+#endif
+printf("_al_odroid_get_screen_info(int *dx=%d, int *dy=%d, int *screen_width=%d, int *screen_height=%d)\n", *dx, *dy, *screen_width, *screen_height);
 }
 
 static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
@@ -83,9 +89,10 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
 	#ifndef ALLEGRO_CFG_NO_GLES2
 	display->flags |= ALLEGRO_PROGRAMMABLE_PIPELINE;
 	#endif
-//    if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
-//        _al_raspberrypi_get_screen_size(adapter, &w, &h);
-//    }
+    if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
+	int dx, dy;
+        _al_odroid_get_screen_info(&dx, &dy, &w, &h);
+    }
 
     ALLEGRO_SYSTEM_ODROID *system = (ALLEGRO_SYSTEM_ODROID *)al_get_system_driver();
 
@@ -113,11 +120,63 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
       // FIXME: cleanup
       return NULL;
    }
-*/   
+*/  
+#if 1
+   /* Create a colormap. */
+   Colormap cmap = XCreateColormap(system->x11display,
+      DefaultRootWindow(system->x11display/*, DefaultScreenOfDisplay(system->x11display) d->xvinfo->screen*/),
+      DefaultVisual(system->x11display, 0)/*d->xvinfo->visual*/, AllocNone);
+
+   /* Create an X11 window */
+   XSetWindowAttributes swa;
+   int mask = CWBorderPixel | CWColormap | CWEventMask;
+   swa.colormap = cmap;
+   swa.border_pixel = 0;
+   swa.event_mask =
+      KeyPressMask |
+      KeyReleaseMask |
+      StructureNotifyMask |
+      EnterWindowMask |
+      LeaveWindowMask |
+      FocusChangeMask |
+      ExposureMask |
+      PropertyChangeMask |
+      ButtonPressMask |
+      ButtonReleaseMask |
+      PointerMotionMask;
+
+   if (!(display->flags & ALLEGRO_RESIZABLE)) {
+      mask |= CWBackPixel;
+      swa.background_pixel = BlackPixel(system->x11display, DefaultScreen(system->x11display));
+   }
+
+   int x_off = INT_MAX;
+   int y_off = INT_MAX;
+   if (display->flags & ALLEGRO_FULLSCREEN) {
+      //_al_xglx_get_display_offset(system, 0, &x_off, &y_off);
+	x_off = 0;
+	y_off = 0;
+   }
+   else {
+      /* We want new_display_adapter's offset to add to the
+       * new_window_position.
+       */
+      al_get_new_window_position(&x_off, &y_off);
+   }
+
+   d->window = XCreateWindow(system->x11display,
+      RootWindow(system->x11display, DefaultScreen(system->x11display)),
+      x_off != INT_MAX ? x_off : 0,
+      y_off != INT_MAX ? y_off : 0,
+      w, h, 0, DefaultDepth(system->x11display, DefaultScreen(system->x11display))/*d->xvinfo->depth*/,
+      InputOutput, DefaultVisual(system->x11display, 0), mask, &swa);
+
+   XMapWindow(system->x11display, d->window);
+#else
    if (getenv("DISPLAY")) {
       _al_mutex_lock(&system->lock);
-      Window root = RootWindow(
-         system->x11display, DefaultScreen(system->x11display));
+      Window root = DefaultRootWindow(
+         system->x11display/*, DefaultScreen(system->x11display)*/);
       XWindowAttributes attr;
       XGetWindowAttributes(system->x11display, root, &attr);
       d->window = XCreateWindow(
@@ -141,23 +200,133 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
       );
       XMapWindow(system->x11display, d->window);
       //XSetInputFocus(system->x11display, d->window, RevertToParent, CurrentTime);
+   }
+#endif
+
+   printf("Window ID: %ld\n", (long)d->window);
+
+   XSync(system->x11display, False);
+
+   if ((display->flags & ALLEGRO_FULLSCREEN_WINDOW)) {
+      ALLEGRO_INFO("Toggling fullscreen flag for %d x %d window.\n",
+         display->w, display->h);
+      _al_xwin_reset_size_hints(display);
+      _al_xwin_set_fullscreen_window(display, 2);
+      _al_xwin_set_size_hints(display, INT_MAX, INT_MAX);
+
+      XWindowAttributes xwa;
+      XGetWindowAttributes(system->x11display, d->window, &xwa);
+      display->w = xwa.width;
+      display->h = xwa.height;
+      ALLEGRO_INFO("Using ALLEGRO_FULLSCREEN_WINDOW of %d x %d\n",
+         display->w, display->h);
+   }
+   if (display->flags & ALLEGRO_FULLSCREEN) {
       _al_xwin_reset_size_hints(display);
       _al_xwin_set_fullscreen_window(display, 2);
       _al_xwin_set_size_hints(display, INT_MAX, INT_MAX);
       d->wm_delete_window_atom = XInternAtom(system->x11display,
          "WM_DELETE_WINDOW", False);
       XSetWMProtocols(system->x11display, d->window, &d->wm_delete_window_atom, 1);
-      _al_mutex_unlock(&system->lock);
    }
 
-   if (EGL_Open(w, h)) {
-	   return NULL;
+   // EGL context creation
+   static const EGLint contextAttribs[] =
+   {
+#if !defined(ALLEGRO_CFG_NO_GLES2)
+          EGL_CONTEXT_CLIENT_VERSION,     2,
+#endif
+          EGL_NONE
+   };
+   EGLint eglMajorVer, eglMinorVer;
+   EGLBoolean result;
+   const char* output;
+
+   d->egldisplay = eglGetDisplay( (EGLNativeDisplayType) system->x11display );
+   if (d->egldisplay == EGL_NO_DISPLAY)
+   {
+        printf( "ERROR: Unable to create EGL display.\n" );
    }
+   result = eglInitialize( d->egldisplay, &eglMajorVer, &eglMinorVer );
+   if (result != EGL_TRUE )
+   {
+        printf( "ERROR: Unable to initialize EGL display.\n" );
+   }
+   printf( "EGL Implementation Version: Major %d Minor %d\n", eglMajorVer, eglMinorVer );
+   output = eglQueryString( d->egldisplay, EGL_VENDOR );
+   printf( "EGL_VENDOR: %s\n", output );
+   output = eglQueryString( d->egldisplay, EGL_VERSION );
+   printf( "EGL_VERSION: %s\n", output );
+   output = eglQueryString( d->egldisplay, EGL_EXTENSIONS );
+   printf( "EGL_EXTENSIONS: %s\n", output );
+   int attrib = 0;
+   EGLint ConfigAttribs[23];
+/*   ConfigAttribs[attrib++] = EGL_RED_SIZE;
+   ConfigAttribs[attrib++] = 8;
+   ConfigAttribs[attrib++] = EGL_GREEN_SIZE;
+   ConfigAttribs[attrib++] = 8;
+   ConfigAttribs[attrib++] = EGL_BLUE_SIZE;
+   ConfigAttribs[attrib++] = 8;
+   ConfigAttribs[attrib++] = EGL_DEPTH_SIZE;
+   ConfigAttribs[attrib++] = 24;*/
+ /*  ConfigAttribs[attrib++] = EGL_BUFFER_SIZE;
+   ConfigAttribs[attrib++] = 32;*/
+/*   ConfigAttribs[attrib++] = EGL_STENCIL_SIZE;
+   ConfigAttribs[attrib++] = 8;*/
+   ConfigAttribs[attrib++] = EGL_SURFACE_TYPE;
+   ConfigAttribs[attrib++] = EGL_WINDOW_BIT;
+   ConfigAttribs[attrib++] = EGL_RENDERABLE_TYPE;
+#if defined(ALLEGRO_CFG_NO_GLES2)
+   ConfigAttribs[attrib++] = EGL_OPENGL_ES_BIT;
+#else
+   ConfigAttribs[attrib++] = EGL_OPENGL_ES2_BIT;
+#endif
+/*   ConfigAttribs[attrib++] = EGL_SAMPLE_BUFFERS;
+   ConfigAttribs[attrib++] = 0;*/
+   ConfigAttribs[attrib++] = EGL_NONE;
+
+   int totalConfigsFound;
+   EGLConfig eglconfig = 0;
+   result = eglChooseConfig( d->egldisplay, ConfigAttribs, &eglconfig, 1, &totalConfigsFound );
+   printf("there is %d config, result of eglChooseConfig is 0x%04X\n", totalConfigsFound, result);
+#if defined(EGL_VERSION_1_2)
+    /* Bind GLES and create the context */
+    printf( "Binding API\n" );
+    result = eglBindAPI( EGL_OPENGL_ES_API );
+#endif /* EGL_VERSION_1_2 */
+    printf( "Creating Context\n" );
+    d->eglcontext = eglCreateContext( d->egldisplay, eglconfig, NULL, contextAttribs );
+    if (d->eglcontext == EGL_NO_CONTEXT)
+    {
+        printf( "ERROR: Unable to create GLES context (0x%04X)\n", eglGetError());
+    }
+    printf( "Creating window surface\n" );
+
+    d->eglwindow = eglCreateWindowSurface( d->egldisplay, eglconfig, d->window, 0 );
+    if (d->eglwindow == EGL_NO_SURFACE)
+    {
+        printf( "ERROR: Unable to create EGL surface (0x%04X)!\n", eglGetError() );
+    }
+
+    printf( "EGLport: Making Current\n" );
+    result = eglMakeCurrent( d->egldisplay,  d->eglwindow,  d->eglwindow, d->eglcontext );
+    if (result != EGL_TRUE)
+    {
+        printf( "ERROR: Unable to make GLES context current (0x%04X)\n", eglGetError() );
+    }
+    printf( "GLES Setup Complete\n" );
+
+
    al_grab_mouse(display);
    _al_ogl_manage_extensions(display);
    _al_ogl_set_extensions(ogl->extension_api);
 
    setup_gl(display);
+
+   // EGL context done
+
+
+   _al_mutex_unlock(&system->lock);
 
    al_set_blender(ALLEGRO_ADD, ALLEGRO_ONE, ALLEGRO_INVERSE_ALPHA);
     
@@ -171,16 +340,15 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
 */
 //   al_run_detached_thread(cursor_thread, display);
 	// output some glInfo also
-	const GLubyte* output;
-	output = glGetString(GL_VENDOR);
+	output = (const char*)glGetString(GL_VENDOR);
 	printf( "GL_VENDOR: %s\n", output);
-	output = glGetString(GL_RENDERER);
+	output = (const char*)glGetString(GL_RENDERER);
 	printf( "GL_RENDERER: %s\n", output);
-	output = glGetString(GL_VERSION);
+	output = (const char*)glGetString(GL_VERSION);
 	printf( "GL_VERSION: %s\n", output);
-	output = glGetString(GL_EXTENSIONS);
+	output = (const char*)glGetString(GL_EXTENSIONS);
 	printf( "GL_EXT: %s\n", output);
-	
+
 	#ifdef ALLEGRO_CFG_NO_GLES2
 	// Create the glExtentions
 	printf("Attaching glExtension...\n");
@@ -190,16 +358,16 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
 	glBlendFuncSeparate = (PFNGLBLENDFUNCSEPARATEOESPROC) eglGetProcAddress("glBlendFuncSeparateOES");
 	if (glBlendFuncSeparate == NULL)
 		printf("*** NO glBlendFuncSeparateOES found !!!\n");
-    glBlendEquationSeparate = (PFNGLBLENDEQUATIONSEPARATEOESPROC) eglGetProcAddress("glBlendEquationSeparateOES");
+	glBlendEquationSeparate = (PFNGLBLENDEQUATIONSEPARATEOESPROC) eglGetProcAddress("glBlendEquationSeparateOES");
 	if (glBlendEquationSeparate == NULL)
 		printf("*** NO glBlendEquationSeparateOES found !!!\n");
-    glGenerateMipmapEXT = (PFNGLGENERATEMIPMAPOESPROC) eglGetProcAddress("glGenerateMipmapOES");
+	glGenerateMipmapEXT = (PFNGLGENERATEMIPMAPOESPROC) eglGetProcAddress("glGenerateMipmapOES");
 	if (glGenerateMipmapEXT == NULL)
 		printf("*** NO glGenerateMipmapOES found !!!\n");
-    glBindFramebufferEXT = (PFNGLBINDFRAMEBUFFEROESPROC) eglGetProcAddress("glBindFramebufferOES");
+	glBindFramebufferEXT = (PFNGLBINDFRAMEBUFFEROESPROC) eglGetProcAddress("glBindFramebufferOES");
 	if (glBindFramebufferEXT == NULL)
 		printf("*** NO glBindFramebufferOES found !!!\n");
-    glDeleteFramebuffersEXT = (PFNGLDELETEFRAMEBUFFERSOESPROC) eglGetProcAddress("glDeleteFramebuffersOES");
+	glDeleteFramebuffersEXT = (PFNGLDELETEFRAMEBUFFERSOESPROC) eglGetProcAddress("glDeleteFramebuffersOES");
 	if (glDeleteFramebuffersEXT == NULL)
 		printf("*** NO glDeleteFramebuffersOES found !!!\n");
 	glGenFramebuffersEXT = (PFNGLGENFRAMEBUFFERSOESPROC) eglGetProcAddress("glGenFramebuffersOES");
@@ -223,7 +391,7 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
 static void odroid_destroy_display(ALLEGRO_DISPLAY *d)
 {
 //printf("odroid_destroy_display(%x)\n", d);
-   ALLEGRO_DISPLAY_ODROID *pidisplay = (ALLEGRO_DISPLAY_ODROID *)d;
+   ALLEGRO_DISPLAY_ODROID *odisplay = (ALLEGRO_DISPLAY_ODROID *)d;
 
 //   stop_cursor_thread = true;
 
@@ -240,12 +408,26 @@ static void odroid_destroy_display(ALLEGRO_DISPLAY *d)
    ALLEGRO_SYSTEM_ODROID *system = (ALLEGRO_SYSTEM_ODROID *)al_get_system_driver();
    _al_vector_find_and_delete(&system->system.displays, &d);
 
-   EGL_Close();
+    if (odisplay->egldisplay != NULL)
+    {
+        eglMakeCurrent( odisplay->egldisplay, NULL, NULL, EGL_NO_CONTEXT );
+        if (odisplay->eglcontext != NULL) {
+            eglDestroyContext( odisplay->egldisplay, odisplay->eglcontext );
+        }
+        if (odisplay->eglwindow != NULL) {
+            eglDestroySurface( odisplay->egldisplay, odisplay->eglwindow );
+        }
+        eglTerminate( odisplay->egldisplay );
+    }
+
+    odisplay->eglwindow = NULL;
+    odisplay->eglcontext = NULL;
+    odisplay->egldisplay = NULL;
 
    if (getenv("DISPLAY")) {
       _al_mutex_lock(&system->lock);
-      XUnmapWindow(system->x11display, pidisplay->window);
-      XDestroyWindow(system->x11display, pidisplay->window);
+      XUnmapWindow(system->x11display, odisplay->window);
+      XDestroyWindow(system->x11display, odisplay->window);
       _al_mutex_unlock(&system->lock);
    }
    
@@ -359,15 +541,13 @@ static bool odroid_get_window_constraints(ALLEGRO_DISPLAY *display,
 static bool odroid_wait_for_vsync(ALLEGRO_DISPLAY *display)
 {
     (void)display;
-    Platform_VSync();
     return false;
 }
 
 void odroid_flip_display(ALLEGRO_DISPLAY *disp)
 {
-   (void)disp;
-//   eglSwapBuffers(egl_display, egl_window);
-	EGL_SwapBuffers();
+    ALLEGRO_DISPLAY_ODROID *d = (ALLEGRO_DISPLAY_ODROID *)disp;
+   eglSwapBuffers(d->egldisplay, d->eglwindow);
 }
 
 static void odroid_update_display_region(ALLEGRO_DISPLAY *d, int x, int y,

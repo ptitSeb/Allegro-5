@@ -1,8 +1,8 @@
 SET(ALLEGRO_ODROID 1)
 SET(CMAKE_SYSTEM_NAME Linux)
 
-SET(CMAKE_C_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -ffast-math")
-SET(CMAKE_CXX_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -ffast-math")
+SET(CMAKE_C_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -ffast-math -fdiagnostics-color=auto")
+SET(CMAKE_CXX_FLAGS "-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -ffast-math -fdiagnostics-color=auto")
 SET(CMAKE_INSTALL_PREFIX "/usr/local")
 
 set(CMAKE_LINKER ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}ld)
