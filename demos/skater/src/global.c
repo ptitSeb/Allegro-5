@@ -13,11 +13,19 @@
 int fullscreen = 1;
 int controller_id = 1;
 #else
+#ifdef ALLEGRO_PANDORA
+int fullscreen = 1;
+#else
 int fullscreen = 0;
+#endif
 int controller_id = 0;
 #endif
 int bit_depth = 32;
+#ifdef ALLEGRO_PANDORA
+int screen_width = 800;
+#else
 int screen_width = 640;
+#endif
 int screen_height = 480;
 int screen_orientation = ALLEGRO_DISPLAY_ORIENTATION_0_DEGREES;
 int window_width = 640;
@@ -98,7 +106,9 @@ void read_global_config(const char *config)
    ALLEGRO_CONFIG *c = al_load_config_file(config);
    if (!c) c = al_create_config();
 
+#ifndef ALLEGRO_PANDORA
    fullscreen = get_config_int(c, "GFX", "fullscreen", fullscreen);
+#endif
    bit_depth = get_config_int(c, "GFX", "bit_depth", bit_depth);
    screen_width = get_config_int(c, "GFX", "screen_width", screen_width);
    screen_height = get_config_int(c, "GFX", "screen_height", screen_height);
@@ -191,12 +201,16 @@ int change_gfx_mode(void)
       flags |= ALLEGRO_WINDOWED | ALLEGRO_RESIZABLE;
       screen_width = window_width;
       screen_height = window_height;
+#ifdef ALLEGRO_PANDORA
+   }
+   flags |= ALLEGRO_FULLSCREEN;
+#else
    } else if (fullscreen == 1) {
       flags |= ALLEGRO_FULLSCREEN_WINDOW;
    } else {
       flags |= ALLEGRO_FULLSCREEN;
    }
-   
+#endif
    if (screen) {
       al_destroy_display(screen);
    }

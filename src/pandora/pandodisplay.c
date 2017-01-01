@@ -361,7 +361,8 @@ static void pandora_update_display_region(ALLEGRO_DISPLAY *d, int x, int y,
 
 static bool pandora_acknowledge_resize(ALLEGRO_DISPLAY *d)
 {
-   _al_pandora_setup_opengl_view(d);
+//   _al_pandora_setup_opengl_view(d);
+   (void)d;
    return true;
 }
 
@@ -400,20 +401,8 @@ static bool pandora_hide_mouse_cursor(ALLEGRO_DISPLAY *display)
 void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
    bool delay_hack)
 {
-   ALLEGRO_SYSTEM_ODROID *system = (void *)al_get_system_driver();
    (void)d;
    (void)old_resize_count;
-
-   ALLEGRO_DEBUG("Awaiting resize event\n");
-
-   XSync(system->x11display, False);
-
-   /* XXX: This hack helps when toggling between fullscreen windows and not,
-    * on various window managers.
-    */
-   if (delay_hack) {
-      al_rest(0.2);
-   }
 }
 
 /* Obtain a reference to this driver. */
