@@ -2,11 +2,9 @@
 SET(CMAKE_SYSTEM_NAME Linux)
 SET(CMAKE_SYSTEM_VERSION 1)
 
-SET(ALLEGRO_CFG_OPENGLES 1)
-
 #set path for android toolchain -- look
 
-set(ANDROID_NDK_TOOLCHAIN_ROOT "$ENV{HOME}/android-toolchain" CACHE PATH "Path to the Android NDK Standalone Toolchain" )
+set(ANDROID_NDK_TOOLCHAIN_ROOT "$ENV{ANDROID_NDK_TOOLCHAIN_ROOT}" CACHE PATH "Path to the Android NDK Standalone Toolchain" )
 
 message( STATUS "Selected Android toolchain: ${ANDROID_NDK_TOOLCHAIN_ROOT}" )
 if(NOT EXISTS ${ANDROID_NDK_TOOLCHAIN_ROOT})
@@ -32,15 +30,35 @@ find_program(CMAKE_MAKE_PROGRAM make)
 
 #setup build targets, mutually exclusive
 set(PossibleArmTargets
-  "x86;armeabi;armeabi-v7a;armeabi-v7a with NEON")
+  "x86;x86_64;armeabi;armeabi-v7a;armeabi-v7a with NEON;arm64-v8a;mips;mips64")
 set(ARM_TARGETS "armeabi-v7a" CACHE STRING 
     "the arm targets for android, recommend armeabi-v7a 
     for floating point support and NEON.")
 
 if(ARM_TARGETS STREQUAL "x86")
     set(ANDROID_ARCH "i686-linux-android")
-else()
+elseif(ARM_TARGETS STREQUAL "x86_64")
+    set(ANDROID_ARCH "x86_64-linux-android")
+elseif(ARM_TARGETS STREQUAL "arm64-v8a")
+    set(ANDROID_ARCH "aarch64-linux-android")
+elseif(ARM_TARGETS STREQUAL "mips")
+    set(ANDROID_ARCH "mipsel-linux-android")
+elseif(ARM_TARGETS STREQUAL "mips64")
+    set(ANDROID_ARCH "mips64el-linux-android")
+elseif(ARM_TARGETS STREQUAL "armeabi")
     set(ANDROID_ARCH "arm-linux-androideabi")
+    set(ARMEABI true)
+    set(NEON false)
+elseif(ARM_TARGETS STREQUAL "armeabi-v7a")
+    set(ARMEABI true)
+    set(ANDROID_ARCH "arm-linux-androideabi")
+    set(NEON false)
+elseif(ARM_TARGETS STREQUAL "armeabi-v7a with NEON")
+    set(ARMEABI true)
+    set(ANDROID_ARCH "arm-linux-androideabi")
+    set(NEON true)
+else()
+    message(FATAL_ERROR "Unknown Android target ${ARM_TARGETS}")        
 endif()
 
 if(WIN32)
@@ -75,45 +93,22 @@ set(LIBRARY_OUTPUT_PATH_ROOT ${CMAKE_SOURCE_DIR} CACHE PATH
     android libs are installed to")
     
 #set these flags for client use
-if(ARM_TARGETS STREQUAL "armeabi")
-  set(ARMEABI true)
-  set(LIBRARY_OUTPUT_PATH ${LIBRARY_OUTPUT_PATH_ROOT}/libs/armeabi
-      CACHE PATH "path for android libs" FORCE)
-  set(CMAKE_INSTALL_PREFIX ${ANDROID_NDK_TOOLCHAIN_ROOT}/user/armeabi
-      CACHE STRING "path for installing" FORCE)
-  set(NEON false)
-elseif(ARM_TARGETS STREQUAL "x86")
-  set( LIBRARY_OUTPUT_PATH ${LIBRARY_OUTPUT_PATH_ROOT}/libs/x86
-       CACHE PATH "path for android libs" FORCE)
-  set(  CMAKE_INSTALL_PREFIX ${ANDROID_NDK_TOOLCHAIN_ROOT}/user/x86
-      CACHE STRING "path for installing" FORCE)
-else()
-  if(ARM_TARGETS STREQUAL "armeabi-v7a with NEON")
-    set(NEON true)
-  endif()
-  set(ARMEABI_V7A true)
-  set( LIBRARY_OUTPUT_PATH ${LIBRARY_OUTPUT_PATH_ROOT}/libs/armeabi-v7a 
-       CACHE PATH "path for android libs" FORCE)
-  set(  CMAKE_INSTALL_PREFIX ${ANDROID_NDK_TOOLCHAIN_ROOT}/user/armeabi-v7a
-      CACHE STRING "path for installing" FORCE)
-endif()
+set(LIBRARY_OUTPUT_PATH ${LIBRARY_OUTPUT_PATH_ROOT}/libs/${ARM_TARGETS}
+    CACHE PATH "path for android libs" FORCE)
+set(CMAKE_INSTALL_PREFIX ${ANDROID_NDK_TOOLCHAIN_ROOT}/user/${ARM_TARGETS}
+    CACHE STRING "path for installing" FORCE)
 
 # where is the target environment 
 SET(CMAKE_FIND_ROOT_PATH  ${ANDROID_NDK_TOOLCHAIN_ROOT}/bin ${ANDROID_NDK_TOOLCHAIN_ROOT}/arm-linux-androideabi ${ANDROID_NDK_TOOLCHAIN_ROOT}/sysroot ${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}/share)
-
-#for some reason this is needed? TODO figure out why...
-include_directories(${ANDROID_NDK_TOOLCHAIN_ROOT}/arm-linux-androideabi/include/c++/4.4.3/arm-linux-androideabi)
 
 SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM ONLY)
 # only search for libraries and includes in the ndk toolchain
 SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
-
-if(ARM_TARGETS STREQUAL "x86")
-  SET(CMAKE_CXX_FLAGS "-DGL_GLEXT_PROTOTYPES -fPIC -DANDROID -Wno-psabi")
-  SET(CMAKE_C_FLAGS "-DGL_GLEXT_PROTOTYPES -fPIC -DANDROID -Wno-psabi")
-else()
+SET(CMAKE_CXX_FLAGS "-DGL_GLEXT_PROTOTYPES -fPIC -DANDROID -Wno-psabi")
+SET(CMAKE_C_FLAGS "-DGL_GLEXT_PROTOTYPES -fPIC -DANDROID -Wno-psabi")
+if (ARMEABI)
   #Setup arm specific stuff
   #It is recommended to use the -mthumb compiler flag to force the generation
   #of 16-bit Thumb-1 instructions (the default being 32-bit ARM ones).
@@ -149,18 +144,3 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "c flags")
 #set these global flags for cmake client scripts to change behavior
 set(ANDROID True)
 set(BUILD_ANDROID True)
-
-IF(WANT_GLES2)
-  set(OPENGL_LIBRARIES "-lGLESv1_CM -lGLESv2 -lEGL")
-  set(OPENGL_gl_LIBRARY "-lGLESv1_CM -lGLESv2 -lEGL")
-ELSE(WANT_GLES2)
-  set(OPENGL_LIBRARIES "-lGLESv1_CM")
-  set(OPENGL_gl_LIBRARY "-lGLESv1_CM")
-  set(ALLEGRO_CFG_NO_GLES2 1)
-ENDIF(WANT_GLES2)
-
-set(OPENGL_glu_LIBRARY "")
-
-set(ANDROID_APP_NAME "org.liballeg.app" CACHE STRING "App name for Android")
-STRING(REGEX REPLACE "\\." "/" ANDROID_APP_NAME_SLASH "${ANDROID_APP_NAME}")
-STRING(REGEX REPLACE "\\." "_" ANDROID_APP_NAME "${ANDROID_APP_NAME}")

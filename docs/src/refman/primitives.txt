@@ -3,7 +3,9 @@
 These functions are declared in the following header file.
 Link with allegro_primitives.
 
-    #include <allegro5/allegro_primitives.h>
+~~~~c
+ #include <allegro5/allegro_primitives.h>
+~~~~
 
 ## General
 
@@ -75,14 +77,16 @@ centers inside the green rectangle, the output image has no green pixels.
 
 Here is a more practical example. The image below shows the output of this code:
 
-    /* blue vertical line */
-    al_draw_line(0.5, 0, 0.5, 6, color_blue, 1);
-    /* red horizontal line */
-    al_draw_line(2, 1, 6, 1, color_red, 2);
-    /* green filled rectangle */
-    al_draw_filled_rectangle(3, 4, 5, 5, color_green);
-    /* purple outlined rectangle */
-    al_draw_rectangle(2.5, 3.5, 5.5, 5.5, color_purple, 1);
+~~~~c
+/* blue vertical line */
+al_draw_line(0.5, 0, 0.5, 6, color_blue, 1);
+/* red horizontal line */
+al_draw_line(2, 1, 6, 1, color_red, 2);
+/* green filled rectangle */
+al_draw_filled_rectangle(3, 4, 5, 5, color_green);
+/* purple outlined rectangle */
+al_draw_rectangle(2.5, 3.5, 5.5, 5.5, color_purple, 1);
+~~~~
 
 ![*Diagram showing a practical example of pixel output resulting from the 
 invocation of several primitives addon functions.*](images/primitives2.png)
@@ -111,7 +115,7 @@ semi-transparent pixels. The advantages of multisampling is that slanted shapes
 will look smoother because they will not have jagged edges. A disadvantage of
 multisampling is that it may make vertical and horizontal edges blurry. While
 the exact rules for multisampling are unspecified, and may vary from GPU to 
-GPU it is usually safe to assume that as long as a pixel is either completely
+GPU, it is usually safe to assume that as long as a pixel is either completely
 covered by a shape or completely not covered, then the shape edges will be 
 sharp. The offsets used in the second diagram were chosen so that this is the
 case: if you use those offsets, your shapes (if they are oriented the same way
@@ -203,21 +207,65 @@ See also: [al_draw_rounded_rectangle], [al_draw_filled_rectangle]
 
 ### API: al_calculate_arc
 
-Calculates an elliptical arc, and sets the vertices in the destination buffer to
-the calculated positions. If `thickness <= 0`, then `num_points` of points are
-required in the destination, otherwise twice as many are needed.  The
-destination buffer should consist of regularly spaced (by distance of `stride`
-bytes) doublets of floats, corresponding to x and y coordinates of the
-vertices.
+When `thickness <= 0` this function computes positions of `num_points`
+regularly spaced points on an elliptical arc. When `thickness > 0` this
+function computes two sets of points, obtained as follows: the first set is
+obtained by taking the points computed in the `thickness <= 0` case and
+shifting them by `thickness / 2` outward, in a direction perpendicular to the
+arc curve. The second set is the same, but shifted `thickness / 2` inward
+relative to the arc. The two sets of points are interleaved in the destination
+buffer (i.e. the first pair of points will be collinear with the arc center,
+the first point of the pair will be farther from the center than the second
+point; the next pair will also be collinear, but at a different angle and so
+on).
+
+The destination buffer `dest` is interpreted as a set of regularly spaced pairs
+of floats, each pair holding the coordinates of the corresponding point on the
+arc. The two floats in the pair are adjacent, and the distance (in bytes)
+between the addresses of the first float in two successive pairs is `stride`.
+For example, if you have a tightly packed array of floats with no spaces
+between pairs, then `stride` will be exactly `2 * sizeof(float)`.
+
+Example with `thickness <= 0`:
+
+~~~~c
+const int num_points = 4;
+float points[num_points][2];
+al_calculate_arc(&points[0][0], 2 * sizeof(float), 0, 0, 10, 10, 0, ALLEGRO_PI / 2, 0, num_points);
+
+assert((int)points[0][0] == 10);
+assert((int)points[0][1] == 0);
+
+assert((int)points[num_points - 1][0] == 0);
+assert((int)points[num_points - 1][1] == 10);
+~~~~
+
+Example with `thickness > 0`:
+
+~~~~c
+const int num_points = 4;
+float points[num_points * 2][2];
+al_calculate_arc(&points[0][0], 2 * sizeof(float), 0, 0, 10, 10, 0, ALLEGRO_PI / 2, 2, num_points);
+
+assert((int)points[0][0] == 11);
+assert((int)points[0][1] == 0);
+assert((int)points[1][0] == 9);
+assert((int)points[1][1] == 0);
+
+assert((int)points[(num_points - 1) * 2][0] == 0);
+assert((int)points[(num_points - 1) * 2][1] == 11);
+assert((int)points[(num_points - 1) * 2 + 1][0] == 0);
+assert((int)points[(num_points - 1) * 2 + 1][1] == 9);
+~~~~
 
 *Parameters:*
 
 * dest - The destination buffer
-* stride - Distance (in bytes) between starts of successive pairs of coordinates
+* stride - Distance (in bytes) between starts of successive pairs of points
 * cx, cy - Center of the arc
 * rx, ry - Radii of the arc
-* start_theta - The initial angle from which the arc is calculated
-* delta_theta - Angular span of the arc (pass a negative number to switch
+* start_theta - The initial angle from which the arc is calculated in radians
+* delta_theta - Angular span of the arc in radians (pass a negative number to switch
  direction)
 * thickness - Thickness of the arc
 * num_points - The number of points to calculate
@@ -233,8 +281,8 @@ Draws a pieslice (outlined circular sector).
 * cx, cy - Center of the pieslice
 * r - Radius of the pieslice
 * color - Color of the pieslice
-* start_theta - The initial angle from which the pieslice is drawn
-* delta_theta - Angular span of the pieslice (pass a negative number to switch
+* start_theta - The initial angle from which the pieslice is drawn in radians
+* delta_theta - Angular span of the pieslice in radians (pass a negative number to switch
     direction)
 * thickness - Thickness of the circle, pass `<= 0` to draw hairline pieslice
 
@@ -251,8 +299,8 @@ Draws a filled pieslice (filled circular sector).
 * cx, cy - Center of the pieslice
 * r - Radius of the pieslice
 * color - Color of the pieslice
-* start_theta - The initial angle from which the pieslice is drawn
-* delta_theta - Angular span of the pieslice (pass a negative number to switch
+* start_theta - The initial angle from which the pieslice is drawn in radians
+* delta_theta - Angular span of the pieslice in radians (pass a negative number to switch
     direction)
 
 Since: 5.0.6, 5.1.0
@@ -318,8 +366,8 @@ Draws an arc.
 * cx, cy - Center of the arc
 * r - Radius of the arc
 * color - Color of the arc
-* start_theta - The initial angle from which the arc is calculated
-* delta_theta - Angular span of the arc (pass a negative number to switch
+* start_theta - The initial angle from which the arc is calculated in radians
+* delta_theta - Angular span of the arc in radians (pass a negative number to switch
     direction)
 * thickness - Thickness of the arc, pass `<= 0` to draw hairline arc
 
@@ -334,8 +382,8 @@ Draws an elliptical arc.
 * cx, cy - Center of the arc
 * rx, ry - Radii of the arc
 * color - Color of the arc
-* start_theta - The initial angle from which the arc is calculated
-* delta_theta - Angular span of the arc (pass a negative number to switch
+* start_theta - The initial angle from which the arc is calculated in radians
+* delta_theta - Angular span of the arc in radians (pass a negative number to switch
     direction)
 * thickness - Thickness of the arc, pass `<= 0` to draw hairline arc
 
@@ -388,7 +436,7 @@ doublets of floats, corresponding to x and y coordinates of the vertices.
 * dest_stride - Distance (in bytes) between starts of successive pairs of 
     coordinates in the destination buffer
 * points - An array of pairs of coordinates for each point
-* points_stride - Distance (in bytes) between starts successive pairs of 
+* points_stride - Distance (in bytes) between starts of successive pairs of
     coordinates in the points buffer
 * thickness - Thickness of the spline ribbon
 * num_segments - The number of points to calculate
@@ -397,14 +445,18 @@ See also: [al_draw_ribbon], [al_calculate_arc], [al_calculate_spline]
 
 ### API: al_draw_ribbon
 
-Draws a series of straight lines given an array of points. The ribbon will go
-through all of the passed points.
+Draws a ribbon given an array of points. The ribbon will go through all of
+the passed points. The points buffer should consist of regularly spaced
+doublets of floats, corresponding to x and y coordinates of the vertices.
 
 *Parameters:*
 
 * points - An array of coordinate pairs (x and y) for each point
+* points_stride - Distance (in bytes) between starts of successive pairs of
+    coordinates in the points buffer
 * color - Color of the spline
 * thickness - Thickness of the spline, pass `<= 0` to draw hairline spline
+* num_segments - The number of segments
 
 See also: [al_calculate_ribbon]
 
@@ -416,11 +468,11 @@ routines also support using textures on the primitives with the following
 restrictions:
 
 For maximum portability, you should only use textures that have dimensions that 
-are a power of two, as not every videocard supports them completely. This 
-warning is relaxed, however, if the texture coordinates never exit the
-boundaries of a single bitmap (i.e. you are not having the texture repeat/tile).
-As long as that is the case, any texture can be used safely. Sub-bitmaps work
-as textures, but cannot be tiled.
+are a power of two, as not every videocard supports textures of different sizes
+completely. This warning is relaxed, however, if the texture coordinates
+never exit the boundaries of a single bitmap (i.e. you are not having the texture
+repeat/tile). As long as that is the case, any texture can be used safely.
+Sub-bitmaps work as textures, but cannot be tiled.
 
 Some platforms also dictate a minimum texture size, which means that textures
 smaller than that size will not tile properly. The minimum size that will work
@@ -442,12 +494,12 @@ Draws a subset of the passed vertex array.
 
 *Parameters:*
 
-* texture - Texture to use, pass 0 to use only color shaded primitves
+* texture - Texture to use, pass NULL to use only color shaded primitves
 * vtxs - Pointer to an array of vertices
-* decl - Pointer to a vertex declaration. If set to NULL, the vertices
-      are assumed to be of the ALLEGRO_VERTEX type
+* decl - Pointer to a [vertex declaration][al_create_vertex_decl]. If set to NULL,
+      the vertices are assumed to be of the [ALLEGRO_VERTEX] type
 * start - Start index of the subset of the vertex array to draw
-* end - One past the last index of subset of the vertex array to draw
+* end - One past the last index of the subset of the vertex array to draw
 * type - A member of the [ALLEGRO_PRIM_TYPE] enumeration, specifying what kind
          of primitive to draw
 
@@ -456,12 +508,14 @@ Number of primitives drawn
 
 For example to draw a textured triangle you could use:
 
-    ALLEGRO_COLOR white = al_map_rgb_f(1, 1, 1);
-    ALLEGRO_VERTEX v[] = {
-        {.x = 128, .y = 0, .z = 0, .color = white, .u = 128, .v = 0},
-        {.x = 0, .y = 256, .z = 0, .color = white, .u = 0, .v = 256},
-        {.x = 256, .y = 256, .z = 0, .color = white, .u = 256, .v = 256}};
-    al_draw_prim(v, NULL, texture, 0, 3, ALLEGRO_PRIM_TRIANGLE_LIST);
+~~~~c
+ALLEGRO_COLOR white = al_map_rgb_f(1, 1, 1);
+ALLEGRO_VERTEX v[] = {
+   {.x = 128, .y = 0, .z = 0, .color = white, .u = 128, .v = 0},
+   {.x = 0, .y = 256, .z = 0, .color = white, .u = 0, .v = 256},
+   {.x = 256, .y = 256, .z = 0, .color = white, .u = 256, .v = 256}};
+al_draw_prim(v, NULL, texture, 0, 3, ALLEGRO_PRIM_TRIANGLE_LIST);
+~~~~
 
 See also:
 [ALLEGRO_VERTEX], [ALLEGRO_PRIM_TYPE], [ALLEGRO_VERTEX_DECL], 
@@ -474,9 +528,9 @@ to specify which vertices to use.
 
 *Parameters:*
 
-* texture - Texture to use, pass 0 to use only shaded primitves
+* texture - Texture to use, pass NULL to use only color shaded primitves
 * vtxs - Pointer to an array of vertices
-* decl - Pointer to a vertex declaration. If set to 0, the vtxs are assumed
+* decl - Pointer to a vertex declaration. If set to NULL, the vtxs are assumed
       to be of the ALLEGRO_VERTEX type
 * indices - An array of indices into the vertex array
 * num_vtx - Number of indices from the indices array you want to draw
@@ -499,7 +553,7 @@ it must be created with the `ALLEGRO_PRIM_BUFFER_READWRITE`).
 *Parameters:*
 
 * vertex_buffer - Vertex buffer to draw
-* texture - Texture to use, pass 0 to use only color shaded primitves
+* texture - Texture to use, pass NULL to use only color shaded primitves
 * start - Start index of the subset of the vertex buffer to draw
 * end - One past the last index of the subset of the vertex buffer to draw
 * type - A member of the [ALLEGRO_PRIM_TYPE] enumeration, specifying what kind
@@ -524,7 +578,7 @@ created with the `ALLEGRO_PRIM_BUFFER_READWRITE`).
 *Parameters:*
 
 * vertex_buffer - Vertex buffer to draw
-* texture - Texture to use, pass 0 to use only color shaded primitves
+* texture - Texture to use, pass NULL to use only color shaded primitves
 * index_buffer - Index buffer to use
 * start - Start index of the subset of the vertex buffer to draw
 * end - One past the last index of the subset of the vertex buffer to draw
@@ -546,8 +600,8 @@ Draws a triangle using the software rasterizer and user supplied pixel
 functions. For help in understanding what these functions do, see the
 implementation of the various shading routines in addons/primitives/tri_soft.c.
 The triangle is drawn in two segments, from top to bottom. The segments are
-deliniated by the vertically middle vertex of the triangle. One of each segment
-may be absent if two vertices are horizontally collinear.
+deliniated by the vertically middle vertex of the triangle. One of the two
+segments may be absent if two vertices are horizontally collinear.
 
 *Parameters:*
 
@@ -561,7 +615,7 @@ may be absent if two vertices are horizontally collinear.
   drawn in the segment. 
   The second two are the left minor and the left major steps, respectively.
   They represent the sizes of two steps taken by the rasterizer as it walks
-  on the left side of the triangle. From then on, the each step will either
+  on the left side of the triangle. From then on, each step will either
   be classified as a minor or a major step, corresponding to the above
   values.
 * step - Called once per scanline. The last parameter is set to 1 if the step
@@ -592,7 +646,7 @@ The line is drawn top to bottom.
 * step - Called once per pixel. The second parameter is set to 1 if the step is
   a minor step, and 0 if this step is a major step. Minor steps are taken only
   either in x or y directions.
-  Major steps are taken in both directions diagonally. In all cases, the the
+  Major steps are taken in both directions diagonally. In all cases, the
   absolute value of the change in coordinate is at most 1 in either direction.
 * draw - Called once per pixel. The function is expected to draw the pixel at
   the coordinates passed to it.
@@ -607,7 +661,7 @@ Creates a vertex declaration, which describes a custom vertex format.
 
 *Parameters:*
 
-* elements - An array of ALLEGRO_VERTEX_ELEMENT structures.
+* elements - An array of [ALLEGRO_VERTEX_ELEMENT] structures.
 * stride - Size of the custom vertex structure
 
 *Returns:*
@@ -634,9 +688,16 @@ See also:
 Creates a vertex buffer. Can return NULL if the buffer could not be
 created (e.g. the system only supports write-only buffers).
 
+> *Note:*
+>
+> This is an advanced feature, often unsupported on lower-end video cards.
+> Be extra mindful of this function failing and make arrangements for
+> fallback drawing functionality or a nice error message for users with
+> such lower-end cards.
+
 *Parameters:*
 
-* decl - Vertex type that this buffer will hold. 0 implies that this buffer will
+* decl - Vertex type that this buffer will hold. NULL implies that this buffer will
    hold [ALLEGRO_VERTEX] vertices
 * initial_data - Memory buffer to copy from to initialize the vertex buffer. Can
    be `NULL`, in which case the buffer is uninitialized.
@@ -651,7 +712,7 @@ See also: [ALLEGRO_VERTEX_BUFFER], [al_destroy_vertex_buffer]
 
 ### API: al_destroy_vertex_buffer
 
-Destroys a vertex buffer. Does nothing if passed 0.
+Destroys a vertex buffer. Does nothing if passed NULL.
 
 Since: 5.1.3
 
@@ -659,8 +720,8 @@ See also: [ALLEGRO_VERTEX_BUFFER], [al_create_vertex_buffer]
 
 ### API: al_lock_vertex_buffer
 
-Locks a vertex buffer so you can access its data. Will return 0 if the
-parameters are invalid, if reading is requested from a write only buffer and
+Locks a vertex buffer so you can access its data. Will return NULL if the
+parameters are invalid, if reading is requested from a write only buffer, or
 if the buffer is already locked.
 
 *Parameters:*
@@ -697,6 +758,13 @@ See also: [ALLEGRO_VERTEX_BUFFER]
 Creates a index buffer. Can return NULL if the buffer could not be
 created (e.g. the system only supports write-only buffers).
 
+> *Note:*
+>
+> This is an advanced feature, often unsupported on lower-end video cards.
+> Be extra mindful of this function failing and make arrangements for
+> fallback drawing functionality or a nice error message for users with
+> such lower-end cards.
+
 *Parameters:*
 
 * index_size - Size of the index in bytes. Supported sizes are 2 
@@ -714,7 +782,7 @@ See also: [ALLEGRO_INDEX_BUFFER], [al_destroy_index_buffer]
 
 ### API: al_destroy_index_buffer
 
-Destroys a index buffer. Does nothing if passed 0.
+Destroys a index buffer. Does nothing if passed NULL.
 
 Since: 5.1.8
 
@@ -722,7 +790,7 @@ See also: [ALLEGRO_INDEX_BUFFER], [al_create_index_buffer]
 
 ### API: al_lock_index_buffer
 
-Locks a index buffer so you can access its data. Will return 0 if the
+Locks a index buffer so you can access its data. Will return NULL if the
 parameters are invalid, if reading is requested from a write only buffer and
 if the buffer is already locked.
 
@@ -759,7 +827,7 @@ See also: [ALLEGRO_INDEX_BUFFER]
 
 Draw a series of line segments.
 
-* vertex - Interleaved array of (x, y) vertex coordinates
+* vertices - Interleaved array of (x, y) vertex coordinates
 * vertex_stride - the number of bytes between pairs of vertices (the stride)
 * vertex_count - Number of vertices in the array
 * join_style - Member of [ALLEGRO_LINE_JOIN] specifying how to render the
@@ -773,17 +841,19 @@ caps
 The stride is normally `2 * sizeof(float)` but may be more if the vertex
 coordinates are in an array of some structure type, e.g.
 
-    struct VertexInfo {
-       float x;
-       float y;
-       int id;
-    };
+~~~~c
+struct VertexInfo {
+   float x;
+   float y;
+   int id;
+};
 
-    void my_draw(struct VertexInfo verts[], int vertex_count, ALLEGRO_COLOR c)
-    {
-       al_draw_polyline((float *)verts, sizeof(VertexInfo), vertex_count,
-          ALLEGRO_LINE_JOIN_NONE, ALLEGRO_LINE_CAP_NONE, c, 1.0, 1.0);
-    }
+void my_draw(struct VertexInfo verts[], int vertex_count, ALLEGRO_COLOR c)
+{
+   al_draw_polyline((float *)verts, sizeof(VertexInfo), vertex_count,
+      ALLEGRO_LINE_JOIN_NONE, ALLEGRO_LINE_CAP_NONE, c, 1.0, 1.0);
+}
+~~~~
 
 The stride may also be negative if the vertices are stored in reverse order.
 
@@ -844,20 +914,22 @@ hole may overlap the main polygon.
 
 For example:
 
-    float vertices[] = {
-          0,   0, // filled polygon, upper left corner
-          0, 100, // filled polygon, lower left corner
-        100, 100, // filled polygon, lower right corner
-        100,   0, // filled polygon, upper right corner
-         10,  10, // hole, upper left
-         90,  10, // hole, upper right
-         90,  90  // hole, lower right
-    };
-    int vertex_counts[] = {
-       4, // number of vertices for filled polygon
-       3, // number of vertices for hole
-       0  // terminator
-    };
+~~~~c
+float vertices[] = {
+      0,   0, // filled polygon, upper left corner
+      0, 100, // filled polygon, lower left corner
+    100, 100, // filled polygon, lower right corner
+    100,   0, // filled polygon, upper right corner
+     10,  10, // hole, upper left
+     90,  10, // hole, upper right
+     90,  90  // hole, lower right
+};
+int vertex_counts[] = {
+   4, // number of vertices for filled polygon
+   3, // number of vertices for hole
+   0  // terminator
+};
+~~~~
 
 There are 7 vertices: four for an outer square from (0, 0) to (100, 100) in
 anti-clockwise order, and three more for an inner triangle in clockwise order.
@@ -888,7 +960,7 @@ to be convex but must not be self-overlapping.
   in each hole.  The array must be terminated with an element with value zero.
 * emit_triangle -
   a function to be called for every set of three points that form a triangle.
-  The function is passed the indexes of the points in `vertices` and `userdata`.
+  The function is passed the indices of the points in `vertices` and `userdata`.
 * userdata - arbitrary data to be passed to emit_triangle.
 
 Since: 5.1.0
@@ -902,15 +974,15 @@ See also: [al_draw_filled_polygon_with_holes]
 Defines the generic vertex type, with a 3D position, color and texture
 coordinates for a single texture. Note that at this time, the software driver
 for this addon cannot render 3D primitives. If you want a 2D only primitive,
-set z to 0. Note that when you must initialize all members of this struct when 
+set z to 0. Note that you must initialize all members of this struct when
 you're using it. One exception to this rule are the u and v variables which can
 be left uninitialized when you are not using textures.
 
 *Fields:*
 
 * x, y, z - Position of the vertex (float)
-* color - [ALLEGRO_COLOR] structure, storing the color of the vertex
 * u, v - Texture coordinates measured in pixels (float)
+* color - [ALLEGRO_COLOR] structure, storing the color of the vertex
 
 See also:
 [ALLEGRO_PRIM_ATTR]
@@ -928,23 +1000,25 @@ See also:
 
 A small structure describing a certain element of a vertex. E.g. the
 position of the vertex, or its color. These structures are used by the 
-al_create_vertex_decl function to create the vertex declaration. For that they
+[al_create_vertex_decl] function to create the vertex declaration. For that they
 generally occur in an array. The last element of such an array should have the 
 attribute field equal to 0, to signify that it is the end of the array.
 Here is an example code that would create a declaration describing the 
-ALLEGRO_VERTEX structure (passing this as vertex declaration to
+[ALLEGRO_VERTEX] structure (passing this as vertex declaration to
 al_draw_prim would be identical to passing NULL):
 
-    /* On compilers without the offsetof keyword you need to obtain the
-     * offset with sizeof and make sure to account for packing.
-     */
-    ALLEGRO_VERTEX_ELEMENT elems[] = {
-       {ALLEGRO_PRIM_POSITION, ALLEGRO_PRIM_FLOAT_3, offsetof(ALLEGRO_VERTEX, x)},
-       {ALLEGRO_PRIM_TEX_COORD_PIXEL, ALLEGRO_PRIM_FLOAT_2, offsetof(ALLEGRO_VERTEX, u)},
-       {ALLEGRO_PRIM_COLOR_ATTR, 0, offsetof(ALLEGRO_VERTEX, color)},
-       {0, 0, 0}
-    };
-    ALLEGRO_VERTEX_DECL* decl = al_create_vertex_decl(elems, sizeof(ALLEGRO_VERTEX));
+~~~~c
+/* On compilers without the offsetof keyword you need to obtain the
+ * offset with sizeof and make sure to account for packing.
+ */
+ALLEGRO_VERTEX_ELEMENT elems[] = {
+   {ALLEGRO_PRIM_POSITION, ALLEGRO_PRIM_FLOAT_3, offsetof(ALLEGRO_VERTEX, x)},
+   {ALLEGRO_PRIM_TEX_COORD_PIXEL, ALLEGRO_PRIM_FLOAT_2, offsetof(ALLEGRO_VERTEX, u)},
+   {ALLEGRO_PRIM_COLOR_ATTR, 0, offsetof(ALLEGRO_VERTEX, color)},
+   {0, 0, 0}
+};
+ALLEGRO_VERTEX_DECL* decl = al_create_vertex_decl(elems, sizeof(ALLEGRO_VERTEX));
+~~~~
 
 *Fields:*
 
@@ -952,7 +1026,7 @@ al_draw_prim would be identical to passing NULL):
    this attribute signifies
 * storage - A member of the [ALLEGRO_PRIM_STORAGE] enumeration, specifying how
    this attribute is stored
-* offset - Offset in bytes from the beginning of the custom vertex structure. C
+* offset - Offset in bytes from the beginning of the custom vertex structure. The C
    function offsetof is very useful here.
 
 See also:
@@ -1101,8 +1175,10 @@ number of line segments that will be used to form them.
 
 ### API: ALLEGRO_PRIM_QUALITY
 
-Defines the quality of the quadratic primitives. At 10, this roughly
-corresponds to error of less than half of a pixel.
+Controls the quality of the approximation of curved primitives (e.g. circles).
+Curved primitives are drawn by approximating them with a sequence of line
+segments. By default, this roughly corresponds to error of less than half of a
+pixel.
 
 ### API: ALLEGRO_LINE_JOIN
 

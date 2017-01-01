@@ -40,7 +40,6 @@ ALLEGRO_DISPLAY *al_create_display(int w, int h)
    ALLEGRO_SYSTEM *system;
    ALLEGRO_DISPLAY_INTERFACE *driver;
    ALLEGRO_DISPLAY *display;
-   ALLEGRO_TRANSFORM identity;
    ALLEGRO_EXTRA_DISPLAY_SETTINGS *settings;
    int flags;
 
@@ -75,6 +74,7 @@ ALLEGRO_DISPLAY *al_create_display(int w, int h)
    display->cache_enabled = false;
    display->vertex_cache_size = 0;
    display->cache_texture = 0;
+   al_identity_transform(&display->projview_transform);
 
    display->default_shader = NULL;
 
@@ -90,8 +90,9 @@ ALLEGRO_DISPLAY *al_create_display(int w, int h)
 
    _al_vector_init(&display->bitmaps, sizeof(ALLEGRO_BITMAP*));
 
-   if (settings->settings[ALLEGRO_COMPATIBLE_DISPLAY])
+   if (settings->settings[ALLEGRO_COMPATIBLE_DISPLAY]) {
       al_set_target_bitmap(al_get_backbuffer(display));
+   }
    else {
       ALLEGRO_DEBUG("ALLEGRO_COMPATIBLE_DISPLAY not set\n");
       _al_set_current_display_only(display);
@@ -100,14 +101,11 @@ ALLEGRO_DISPLAY *al_create_display(int w, int h)
    if (display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
       display->default_shader = _al_create_default_shader(display->flags);
       if (!display->default_shader) {
-printf("failed to create default shader\n");
          al_destroy_display(display);
          return NULL;
       }
+      al_use_shader(display->default_shader);
    }
-
-   al_identity_transform(&identity);
-   al_use_transform(&identity);
 
    /* Clear the screen */
    if (settings->settings[ALLEGRO_COMPATIBLE_DISPLAY]) {
@@ -123,14 +121,12 @@ printf("failed to create default shader\n");
 #endif
    }
 
-   al_set_window_title(display, al_get_app_name());
-   
    if (settings->settings[ALLEGRO_AUTO_CONVERT_BITMAPS]) {
       /* We convert video bitmaps to memory bitmaps when the display is
        * destroyed, so seems only fair to re-convertt hem when the
        * display is re-created again.
        */
-      al_convert_bitmaps();
+      al_convert_memory_bitmaps();
    }
 
    return display;
@@ -152,7 +148,7 @@ void al_destroy_display(ALLEGRO_DISPLAY *display)
       ALLEGRO_BITMAP *bmp;
 
       bmp = al_get_target_bitmap();
-      if (bmp && bmp->display == display)
+      if (bmp && _al_get_bitmap_display(bmp) == display)
          al_set_target_bitmap(NULL);
 
       /* This can happen if we have a current display, but the target bitmap
@@ -371,20 +367,6 @@ void al_set_display_icons(ALLEGRO_DISPLAY *display,
       display->vt->set_icons(display, num_icons, icons);
    }
 }
-
-
-
-/* Destroys all bitmaps created for this display.
- */
-void _al_destroy_display_bitmaps(ALLEGRO_DISPLAY *d)
-{
-   while (_al_vector_size(&d->bitmaps) > 0) {
-      ALLEGRO_BITMAP **bptr = _al_vector_ref_back(&d->bitmaps);
-      ALLEGRO_BITMAP *b = *bptr;
-      al_destroy_bitmap(b);
-   }
-}
-
 
 /* Function: al_set_window_position
  */
@@ -639,6 +621,23 @@ void al_set_render_state(ALLEGRO_RENDER_STATE state, int value)
 
    if (display->vt && display->vt->update_render_state) {
       display->vt->update_render_state(display);
+   }
+}
+
+/* Function: al_backup_dirty_bitmaps
+ */
+void al_backup_dirty_bitmaps(ALLEGRO_DISPLAY *display)
+{
+   unsigned int i;
+
+   for (i = 0; i < display->bitmaps._size; i++) {
+      ALLEGRO_BITMAP **bptr = (ALLEGRO_BITMAP **)_al_vector_ref(&display->bitmaps, i);
+      ALLEGRO_BITMAP *bmp = *bptr;
+      if (_al_get_bitmap_display(bmp) == display) {
+         if (bmp->vt && bmp->vt->backup_dirty_bitmap) {
+            bmp->vt->backup_dirty_bitmap(bmp);
+	 }
+      }
    }
 }
 

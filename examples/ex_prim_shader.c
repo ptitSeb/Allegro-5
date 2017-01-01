@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define ALLEGRO_UNSTABLE
 #include "allegro5/allegro.h"
 #include "allegro5/allegro_primitives.h"
 
@@ -50,7 +51,7 @@ static void setup_vertex(CUSTOM_VERTEX* vtx, int ring, int segment, bool inside)
    vtx->nz /= len;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
@@ -72,15 +73,20 @@ int main(void)
    float diffuse_color[4] = {0.1, 0.1, 0.7, 1.0};
    float light_position[3] = {0, 0, 100};
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
 
    al_install_mouse();
    al_install_keyboard();
+   al_install_touch_input();
    if (!al_init_primitives_addon()) {
       abort_example("Could not init primitives addon.\n");
    }
+   init_platform_specific();
    al_set_new_display_flags(ALLEGRO_PROGRAMMABLE_PIPELINE);
    display = al_create_display(SCREEN_WIDTH, SCREEN_HEIGHT);
    if (!display) {
@@ -145,6 +151,10 @@ int main(void)
    queue = al_create_event_queue();
    al_register_event_source(queue, al_get_keyboard_event_source());
    al_register_event_source(queue, al_get_mouse_event_source());
+   if (al_is_touch_input_installed()) {
+      al_register_event_source(queue,
+         al_get_touch_input_mouse_emulation_event_source());
+   }
    al_register_event_source(queue, al_get_display_event_source(display));
    al_register_event_source(queue, al_get_timer_event_source(timer));
    al_start_timer(timer);
@@ -189,4 +199,4 @@ int main(void)
 }
 
 
-/* vim: set sts=4 sw=4 et: */
+/* vim: set sts=3 sw=3 et: */

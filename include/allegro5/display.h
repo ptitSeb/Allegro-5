@@ -24,7 +24,9 @@ enum {
    ALLEGRO_FULLSCREEN_WINDOW           = 1 << 9,
    ALLEGRO_MINIMIZED                   = 1 << 10,
    ALLEGRO_PROGRAMMABLE_PIPELINE       = 1 << 11,
-   ALLEGRO_GTK_TOPLEVEL_INTERNAL       = 1 << 12
+   ALLEGRO_GTK_TOPLEVEL_INTERNAL       = 1 << 12,
+   ALLEGRO_MAXIMIZED                   = 1 << 13,
+   ALLEGRO_OPENGL_ES_PROFILE           = 1 << 14,
 };
 
 /* Possible parameters for al_set_display_option.
@@ -32,39 +34,41 @@ enum {
  * anything here.
  */
 enum ALLEGRO_DISPLAY_OPTIONS {
-   ALLEGRO_RED_SIZE,
-   ALLEGRO_GREEN_SIZE,
-   ALLEGRO_BLUE_SIZE,
-   ALLEGRO_ALPHA_SIZE,
-   ALLEGRO_RED_SHIFT,
-   ALLEGRO_GREEN_SHIFT,
-   ALLEGRO_BLUE_SHIFT,
-   ALLEGRO_ALPHA_SHIFT,
-   ALLEGRO_ACC_RED_SIZE,
-   ALLEGRO_ACC_GREEN_SIZE,
-   ALLEGRO_ACC_BLUE_SIZE,
-   ALLEGRO_ACC_ALPHA_SIZE,
-   ALLEGRO_STEREO,
-   ALLEGRO_AUX_BUFFERS,
-   ALLEGRO_COLOR_SIZE,
-   ALLEGRO_DEPTH_SIZE,
-   ALLEGRO_STENCIL_SIZE,
-   ALLEGRO_SAMPLE_BUFFERS,
-   ALLEGRO_SAMPLES,
-   ALLEGRO_RENDER_METHOD,
-   ALLEGRO_FLOAT_COLOR,
-   ALLEGRO_FLOAT_DEPTH,
-   ALLEGRO_SINGLE_BUFFER,
-   ALLEGRO_SWAP_METHOD,
-   ALLEGRO_COMPATIBLE_DISPLAY,
-   ALLEGRO_UPDATE_DISPLAY_REGION,
-   ALLEGRO_VSYNC,
-   ALLEGRO_MAX_BITMAP_SIZE,
-   ALLEGRO_SUPPORT_NPOT_BITMAP,
-   ALLEGRO_CAN_DRAW_INTO_BITMAP,
-   ALLEGRO_SUPPORT_SEPARATE_ALPHA,
-   ALLEGRO_AUTO_CONVERT_BITMAPS,
-   ALLEGRO_SUPPORTED_ORIENTATIONS,
+   ALLEGRO_RED_SIZE = 0,
+   ALLEGRO_GREEN_SIZE = 1,
+   ALLEGRO_BLUE_SIZE = 2,
+   ALLEGRO_ALPHA_SIZE = 3,
+   ALLEGRO_RED_SHIFT = 4,
+   ALLEGRO_GREEN_SHIFT = 5,
+   ALLEGRO_BLUE_SHIFT = 6,
+   ALLEGRO_ALPHA_SHIFT = 7,
+   ALLEGRO_ACC_RED_SIZE = 8,
+   ALLEGRO_ACC_GREEN_SIZE = 9,
+   ALLEGRO_ACC_BLUE_SIZE = 10,
+   ALLEGRO_ACC_ALPHA_SIZE = 11,
+   ALLEGRO_STEREO = 12,
+   ALLEGRO_AUX_BUFFERS = 13,
+   ALLEGRO_COLOR_SIZE = 14,
+   ALLEGRO_DEPTH_SIZE = 15,
+   ALLEGRO_STENCIL_SIZE = 16,
+   ALLEGRO_SAMPLE_BUFFERS = 17,
+   ALLEGRO_SAMPLES = 18,
+   ALLEGRO_RENDER_METHOD = 19,
+   ALLEGRO_FLOAT_COLOR = 20,
+   ALLEGRO_FLOAT_DEPTH = 21,
+   ALLEGRO_SINGLE_BUFFER = 22,
+   ALLEGRO_SWAP_METHOD = 23,
+   ALLEGRO_COMPATIBLE_DISPLAY = 24,
+   ALLEGRO_UPDATE_DISPLAY_REGION = 25,
+   ALLEGRO_VSYNC = 26,
+   ALLEGRO_MAX_BITMAP_SIZE = 27,
+   ALLEGRO_SUPPORT_NPOT_BITMAP = 28,
+   ALLEGRO_CAN_DRAW_INTO_BITMAP = 29,
+   ALLEGRO_SUPPORT_SEPARATE_ALPHA = 30,
+   ALLEGRO_AUTO_CONVERT_BITMAPS = 31,
+   ALLEGRO_SUPPORTED_ORIENTATIONS = 32,
+   ALLEGRO_OPENGL_MAJOR_VERSION = 33,
+   ALLEGRO_OPENGL_MINOR_VERSION = 34,
    ALLEGRO_DISPLAY_OPTIONS_COUNT
 };
 
@@ -104,10 +108,17 @@ enum
 typedef struct ALLEGRO_DISPLAY ALLEGRO_DISPLAY;
 
 
+/* Enum: ALLEGRO_NEW_WINDOW_TITLE_MAX_SIZE
+*/
+#define ALLEGRO_NEW_WINDOW_TITLE_MAX_SIZE 255
+
 AL_FUNC(void, al_set_new_display_refresh_rate, (int refresh_rate));
 AL_FUNC(void, al_set_new_display_flags, (int flags));
 AL_FUNC(int,  al_get_new_display_refresh_rate, (void));
 AL_FUNC(int,  al_get_new_display_flags, (void));
+
+AL_FUNC(void, al_set_new_window_title, (const char *title));
+AL_FUNC(const char *, al_get_new_window_title, (void));
 
 AL_FUNC(int, al_get_display_width,  (ALLEGRO_DISPLAY *display));
 AL_FUNC(int, al_get_display_height, (ALLEGRO_DISPLAY *display));
@@ -161,8 +172,12 @@ AL_FUNC(int, al_get_display_option, (ALLEGRO_DISPLAY *display, int option));
 AL_FUNC(void, al_hold_bitmap_drawing, (bool hold));
 AL_FUNC(bool, al_is_bitmap_drawing_held, (void));
 
+/* Miscellaneous */
 AL_FUNC(void, al_acknowledge_drawing_halt, (ALLEGRO_DISPLAY *display));
 AL_FUNC(void, al_acknowledge_drawing_resume, (ALLEGRO_DISPLAY *display));
+#if defined(ALLEGRO_UNSTABLE) || defined(ALLEGRO_INTERNAL_UNSTABLE) || defined(ALLEGRO_SRC)
+AL_FUNC(void, al_backup_dirty_bitmaps, (ALLEGRO_DISPLAY *display));
+#endif
 
 #ifdef __cplusplus
    }

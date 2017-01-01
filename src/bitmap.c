@@ -33,30 +33,35 @@ ALLEGRO_DEBUG_CHANNEL("bitmap")
 
 /* Creates a memory bitmap.
  */
-static ALLEGRO_BITMAP *create_memory_bitmap(int w, int h)
+static ALLEGRO_BITMAP *create_memory_bitmap(ALLEGRO_DISPLAY *current_display,
+   int w, int h, int format, int flags)
 {
    ALLEGRO_BITMAP *bitmap;
    int pitch;
-   int format = al_get_new_bitmap_format();
 
-   format = _al_get_real_pixel_format(al_get_current_display(), format);
+   if (_al_pixel_format_is_video_only(format)) {
+      /* Can't have a video-only memory bitmap... */
+      return NULL;
+   }
+
+   format = _al_get_real_pixel_format(current_display, format);
 
    bitmap = al_calloc(1, sizeof *bitmap);
 
    pitch = w * al_get_pixel_size(format);
 
    bitmap->vt = NULL;
-   bitmap->format = format;
+   bitmap->_format = format;
 
    /* If this is really a video bitmap, we add it to the list of to
     * be converted bitmaps.
     */
-   bitmap->flags = al_get_new_bitmap_flags() | ALLEGRO_MEMORY_BITMAP;
-   bitmap->flags &= ~ALLEGRO_VIDEO_BITMAP;
+   bitmap->_flags = flags | ALLEGRO_MEMORY_BITMAP;
+   bitmap->_flags &= ~ALLEGRO_VIDEO_BITMAP;
    bitmap->w = w;
    bitmap->h = h;
    bitmap->pitch = pitch;
-   bitmap->display = NULL;
+   bitmap->_display = NULL;
    bitmap->locked = false;
    bitmap->cl = bitmap->ct = 0;
    bitmap->cr_excl = w;
@@ -64,6 +69,8 @@ static ALLEGRO_BITMAP *create_memory_bitmap(int w, int h)
    al_identity_transform(&bitmap->transform);
    al_identity_transform(&bitmap->inverse_transform);
    bitmap->inverse_transform_dirty = false;
+   al_identity_transform(&bitmap->proj_transform);
+   al_orthographic_transform(&bitmap->proj_transform, 0, 0, -1.0, w, h, 1.0);
    bitmap->parent = NULL;
    bitmap->xofs = bitmap->yofs = 0;
    bitmap->memory = al_malloc(pitch * h);
@@ -85,14 +92,12 @@ static void destroy_memory_bitmap(ALLEGRO_BITMAP *bmp)
 
 
 
-static ALLEGRO_BITMAP *do_create_bitmap(int w, int h,
-   bool (*custom_upload)(ALLEGRO_BITMAP *bitmap, void *data),
-   void *custom_data)
+ALLEGRO_BITMAP *_al_create_bitmap_params(ALLEGRO_DISPLAY *current_display,
+   int w, int h, int format, int flags, int depth, int samples)
 {
+   ALLEGRO_SYSTEM *system = al_get_system_driver();
    ALLEGRO_BITMAP *bitmap;
    ALLEGRO_BITMAP **back;
-   ALLEGRO_SYSTEM *system = al_get_system_driver();
-   ALLEGRO_DISPLAY *current_display = al_get_current_display();
    int64_t mul;
    bool result;
 
@@ -105,26 +110,28 @@ static ALLEGRO_BITMAP *do_create_bitmap(int w, int h,
       return NULL;
    }
 
-   if ((al_get_new_bitmap_flags() & ALLEGRO_MEMORY_BITMAP) ||
-         (!current_display || !current_display->vt ||
-         current_display->vt->create_bitmap == NULL) ||
-         (system->displays._size < 1)) {
-
-      if (al_get_new_bitmap_flags() & ALLEGRO_VIDEO_BITMAP)
+   if ((flags & ALLEGRO_MEMORY_BITMAP) ||
+         !current_display ||
+         !current_display->vt ||
+         current_display->vt->create_bitmap == NULL ||
+         _al_vector_size(&system->displays) < 1)
+   {
+      if (flags & ALLEGRO_VIDEO_BITMAP)
          return NULL;
 
-      return create_memory_bitmap(w, h);
+      return create_memory_bitmap(current_display, w, h, format, flags);
    }
 
    /* Else it's a display bitmap */
 
-   bitmap = current_display->vt->create_bitmap(current_display, w, h);
+   bitmap = current_display->vt->create_bitmap(current_display, w, h,
+      format, flags);
    if (!bitmap) {
       ALLEGRO_ERROR("failed to create display bitmap\n");
       return NULL;
    }
 
-   bitmap->display = current_display;
+   bitmap->_display = current_display;
    bitmap->w = w;
    bitmap->h = h;
    bitmap->locked = false;
@@ -135,32 +142,31 @@ static ALLEGRO_BITMAP *do_create_bitmap(int w, int h,
    al_identity_transform(&bitmap->transform);
    al_identity_transform(&bitmap->inverse_transform);
    bitmap->inverse_transform_dirty = false;
+   al_identity_transform(&bitmap->proj_transform);
+   al_orthographic_transform(&bitmap->proj_transform, 0, 0, -1.0, w, h, 1.0);
    bitmap->parent = NULL;
    bitmap->xofs = 0;
    bitmap->yofs = 0;
-   bitmap->flags |= ALLEGRO_VIDEO_BITMAP;
-   bitmap->dirty = !(bitmap->flags & ALLEGRO_NO_PRESERVE_TEXTURE);
+   bitmap->_flags |= ALLEGRO_VIDEO_BITMAP;
+   bitmap->dirty = !(bitmap->_flags & ALLEGRO_NO_PRESERVE_TEXTURE);
+   bitmap->_depth = depth;
+   bitmap->_samples = samples;
 
    /* The display driver should have set the bitmap->memory field if
     * appropriate; video bitmaps may leave it NULL.
     */
 
-   if (custom_upload) {
-      result = custom_upload(bitmap, custom_data);
-   }
-   else {
-      ASSERT(bitmap->pitch >= w * al_get_pixel_size(bitmap->format));
-      result = bitmap->vt->upload_bitmap(bitmap);
-   }
+   ASSERT(bitmap->pitch >= w * al_get_pixel_size(bitmap->_format));
+   result = bitmap->vt->upload_bitmap(bitmap);
 
    if (!result) {
       al_destroy_bitmap(bitmap);
-      if (al_get_new_bitmap_flags() & ALLEGRO_VIDEO_BITMAP)
+      if (flags & ALLEGRO_VIDEO_BITMAP)
          return NULL;
       /* With ALLEGRO_CONVERT_BITMAP, just use a memory bitmap instead if
       * video failed.
       */
-      return create_memory_bitmap(w, h);
+      return create_memory_bitmap(current_display, w, h, format, flags);
    }
    
    /* We keep a list of bitmaps depending on the current display so that we can
@@ -176,12 +182,16 @@ static ALLEGRO_BITMAP *do_create_bitmap(int w, int h,
  */
 ALLEGRO_BITMAP *al_create_bitmap(int w, int h)
 {
-   ALLEGRO_BITMAP *bitmap = do_create_bitmap(w, h, NULL, NULL);
+   ALLEGRO_BITMAP *bitmap;
+
+   bitmap = _al_create_bitmap_params(al_get_current_display(), w, h,
+      al_get_new_bitmap_format(), al_get_new_bitmap_flags(),
+      al_get_new_bitmap_depth(), al_get_new_bitmap_samples());
    if (bitmap) {
-      _al_register_destructor(_al_dtor_list, bitmap,
+      bitmap->dtor_item = _al_register_destructor(_al_dtor_list, "bitmap", bitmap,
          (void (*)(void *))al_destroy_bitmap);
    }
-   
+
    return bitmap;
 }
 
@@ -207,26 +217,29 @@ void al_destroy_bitmap(ALLEGRO_BITMAP *bitmap)
 
    _al_set_bitmap_shader_field(bitmap, NULL);
 
-   _al_unregister_destructor(_al_dtor_list, bitmap);
+   _al_unregister_destructor(_al_dtor_list, bitmap->dtor_item);
 
-   if (bitmap->flags & ALLEGRO_MEMORY_BITMAP) {
-      destroy_memory_bitmap(bitmap);
-      return;
+   if (!al_is_sub_bitmap(bitmap)) {
+      ALLEGRO_DISPLAY* disp = _al_get_bitmap_display(bitmap);
+      if (al_get_bitmap_flags(bitmap) & ALLEGRO_MEMORY_BITMAP) {
+         destroy_memory_bitmap(bitmap);
+         return;
+      }
+
+      /* Else it's a display bitmap */
+
+      if (bitmap->locked)
+         al_unlock_bitmap(bitmap);
+
+      if (bitmap->vt)
+         bitmap->vt->destroy_bitmap(bitmap);
+
+      if (disp)
+         _al_vector_find_and_delete(&disp->bitmaps, &bitmap);
+
+      if (bitmap->memory)
+         al_free(bitmap->memory);
    }
-
-   /* Else it's a display bitmap */
-
-   if (bitmap->locked)
-      al_unlock_bitmap(bitmap);
-
-   if (bitmap->vt)
-      bitmap->vt->destroy_bitmap(bitmap);
-
-   if (bitmap->display)
-      _al_vector_find_and_delete(&bitmap->display->bitmaps, &bitmap);
-
-   if (bitmap->memory)
-      al_free(bitmap->memory);
 
    al_free(bitmap);
 }
@@ -290,7 +303,19 @@ int al_get_bitmap_height(ALLEGRO_BITMAP *bitmap)
  */
 int al_get_bitmap_format(ALLEGRO_BITMAP *bitmap)
 {
-   return bitmap->format;
+   if (bitmap->parent)
+      return bitmap->parent->_format;
+   else
+      return bitmap->_format;
+}
+
+
+int _al_get_bitmap_memory_format(ALLEGRO_BITMAP *bitmap)
+{
+   if (bitmap->parent)
+      return bitmap->parent->_memory_format;
+   else
+      return bitmap->_memory_format;
 }
 
 
@@ -299,9 +324,42 @@ int al_get_bitmap_format(ALLEGRO_BITMAP *bitmap)
  */
 int al_get_bitmap_flags(ALLEGRO_BITMAP *bitmap)
 {
-   return bitmap->flags;
+   if (bitmap->parent)
+      return bitmap->parent->_flags;
+   else
+      return bitmap->_flags;
 }
 
+
+ALLEGRO_DISPLAY *_al_get_bitmap_display(ALLEGRO_BITMAP *bitmap)
+{
+   if (bitmap->parent)
+      return bitmap->parent->_display;
+   else
+      return bitmap->_display;
+}
+
+
+/* Function: al_get_bitmap_depth
+ */
+int al_get_bitmap_depth(ALLEGRO_BITMAP *bitmap)
+{
+   if (bitmap->parent)
+      return bitmap->parent->_depth;
+   else
+      return bitmap->_depth;
+}
+
+
+/* Function: al_get_bitmap_samples
+ */
+int al_get_bitmap_samples(ALLEGRO_BITMAP *bitmap)
+{
+   if (bitmap->parent)
+      return bitmap->parent->_samples;
+   else
+      return bitmap->_samples;
+}
 
 
 /* Function: al_set_clipping_rectangle
@@ -386,12 +444,15 @@ ALLEGRO_BITMAP *al_create_sub_bitmap(ALLEGRO_BITMAP *parent,
    bitmap = al_calloc(1, sizeof *bitmap);
    bitmap->vt = parent->vt;
 
-   bitmap->format = parent->format;
-   bitmap->flags = parent->flags;
+   /* Sub-bitmap inherits these from the parent.
+    * Leave these unchanged so they can be detected if improperly accessed
+    * directly. */
+   bitmap->_format = 0;
+   bitmap->_flags = 0;
+   bitmap->_display = (ALLEGRO_DISPLAY*)0x1;
 
    bitmap->w = w;
    bitmap->h = h;
-   bitmap->display = parent->display;
    bitmap->locked = false;
    bitmap->cl = bitmap->ct = 0;
    bitmap->cr_excl = w;
@@ -399,19 +460,43 @@ ALLEGRO_BITMAP *al_create_sub_bitmap(ALLEGRO_BITMAP *parent,
    al_identity_transform(&bitmap->transform);
    al_identity_transform(&bitmap->inverse_transform);
    bitmap->inverse_transform_dirty = false;
+   al_identity_transform(&bitmap->proj_transform);
+   al_orthographic_transform(&bitmap->proj_transform, 0, 0, -1.0, w, h, 1.0);
    bitmap->shader = NULL;
    bitmap->parent = parent;
    bitmap->xofs = x;
    bitmap->yofs = y;
    bitmap->memory = NULL;
 
-   if (bitmap->display) {
-      ALLEGRO_BITMAP **back;
-      back = _al_vector_alloc_back(&bitmap->display->bitmaps);
-      *back = bitmap;
-   }
+   bitmap->dtor_item = _al_register_destructor(_al_dtor_list, "sub_bitmap", bitmap,
+      (void (*)(void *))al_destroy_bitmap);
 
    return bitmap;
+}
+
+
+/* Function: al_reparent_bitmap
+ */
+void al_reparent_bitmap(ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP *parent,
+   int x, int y, int w, int h)
+{
+   ASSERT(bitmap->parent);
+   // Re-parenting a non-sub-bitmap makes no sense, so in release mode
+   // just ignore it.
+   if (!bitmap->parent)
+      return;
+
+   if (parent->parent) {
+      x += parent->xofs;
+      y += parent->yofs;
+      parent = parent->parent;
+   }
+
+   bitmap->parent = parent;
+   bitmap->xofs = x;
+   bitmap->yofs = y;
+   bitmap->w = w;
+   bitmap->h = h;
 }
 
 
@@ -432,31 +517,121 @@ ALLEGRO_BITMAP *al_get_parent_bitmap(ALLEGRO_BITMAP *bitmap)
 }
 
 
-static void transfer_bitmap_data(ALLEGRO_BITMAP *src, ALLEGRO_BITMAP *dst)
+/* Function: al_get_bitmap_x
+ */
+int al_get_bitmap_x(ALLEGRO_BITMAP *bitmap)
+{
+   ASSERT(bitmap);
+   return bitmap->xofs;
+}
+
+
+/* Function: al_get_bitmap_y
+ */
+int al_get_bitmap_y(ALLEGRO_BITMAP *bitmap)
+{
+   ASSERT(bitmap);
+   return bitmap->yofs;
+}
+
+
+static bool transfer_bitmap_data(ALLEGRO_BITMAP *src, ALLEGRO_BITMAP *dst)
 {
    ALLEGRO_LOCKED_REGION *dst_region;
    ALLEGRO_LOCKED_REGION *src_region;
+   int src_format = al_get_bitmap_format(src);
+   int dst_format = al_get_bitmap_format(dst);
+   bool src_compressed = _al_pixel_format_is_compressed(src_format);
+   bool dst_compressed = _al_pixel_format_is_compressed(dst_format);
+   int copy_w = src->w;
+   int copy_h = src->h;
 
-   if (!(src_region = al_lock_bitmap(src, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READONLY)))
-      return;
+   if (src_compressed && dst_compressed && src_format == dst_format) {
+      int block_width = al_get_pixel_block_width(src_format);
+      int block_height = al_get_pixel_block_height(src_format);
+      if (!(src_region = al_lock_bitmap_blocked(src, ALLEGRO_LOCK_READONLY)))
+         return false;
 
-   if (!(dst_region = al_lock_bitmap(dst, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_WRITEONLY))) {
-      al_unlock_bitmap(src);
-      return;
+      if (!(dst_region = al_lock_bitmap_blocked(dst, ALLEGRO_LOCK_WRITEONLY))) {
+         al_unlock_bitmap(src);
+         return false;
+      }
+      copy_w = _al_get_least_multiple(copy_w, block_width);
+      copy_h = _al_get_least_multiple(copy_h, block_height);
+      ALLEGRO_DEBUG("Taking fast clone path.\n");
+   }
+   else {
+      int lock_format = ALLEGRO_PIXEL_FORMAT_ANY;
+      /* Go through a non-compressed intermediate */
+      if (src_compressed && !dst_compressed) {
+         lock_format = dst_format;
+      }
+      else if (!src_compressed && dst_compressed) {
+         lock_format = src_format;
+      }
+
+      if (!(src_region = al_lock_bitmap(src, lock_format, ALLEGRO_LOCK_READONLY)))
+         return false;
+
+      if (!(dst_region = al_lock_bitmap(dst, lock_format, ALLEGRO_LOCK_WRITEONLY))) {
+         al_unlock_bitmap(src);
+         return false;
+      }
    }
 
    _al_convert_bitmap_data(
       src_region->data, src_region->format, src_region->pitch,
       dst_region->data, dst_region->format, dst_region->pitch,
-      0, 0, 0, 0, src->w, src->h);
+      0, 0, 0, 0, copy_w, copy_h);
 
    al_unlock_bitmap(src);
    al_unlock_bitmap(dst);
+
+   return true;
 }
 
 
+void _al_copy_bitmap_data(
+   const void *src, int src_pitch, void *dst, int dst_pitch,
+   int sx, int sy, int dx, int dy, int width, int height,
+   int format)
+{
+   int block_width = al_get_pixel_block_width(format);
+   int block_height = al_get_pixel_block_height(format);
+   int block_size = al_get_pixel_block_size(format);
+   const char *src_ptr = src;
+   char *dst_ptr = dst;
+   int y;
+
+   ASSERT(src);
+   ASSERT(dst);
+   ASSERT(_al_pixel_format_is_real(format));
+   ASSERT(width % block_width == 0);
+   ASSERT(height % block_height == 0);
+   ASSERT(sx % block_width == 0);
+   ASSERT(sy % block_height == 0);
+   ASSERT(dx % block_width == 0);
+   ASSERT(dy % block_height == 0);
+
+   sx /= block_width;
+   sy /= block_height;
+   dx /= block_width;
+   dy /= block_height;
+   width /= block_width;
+   height /= block_height;
+
+   src_ptr += sy * src_pitch + sx * block_size;
+   dst_ptr += dy * dst_pitch + dx * block_size;
+
+   for (y = 0; y < height; y++) {
+      memcpy(dst_ptr, src_ptr, width * block_size);
+      src_ptr += src_pitch;
+      dst_ptr += dst_pitch;
+   }
+}
+
 void _al_convert_bitmap_data(
-   void *src, int src_format, int src_pitch,
+   const void *src, int src_format, int src_pitch,
    void *dst, int dst_format, int dst_pitch,
    int sx, int sy, int dx, int dy, int width, int height)
 {
@@ -466,18 +641,15 @@ void _al_convert_bitmap_data(
 
    /* Use memcpy if no conversion is needed. */
    if (src_format == dst_format) {
-      int y;
-      int size = al_get_pixel_size(src_format);
-      char *src_ptr = ((char *)src) + sy * src_pitch + sx * size;
-      char *dst_ptr = ((char *)dst) + dy * dst_pitch + dx * size;
-      width *= size;
-      for (y = 0; y < height; y++) {
-         memcpy(dst_ptr, src_ptr, width);
-         src_ptr += src_pitch;
-         dst_ptr += dst_pitch;
-      }
+      _al_copy_bitmap_data(src, src_pitch, dst, dst_pitch, sx, sy,
+         dx, dy, width, height, src_format);
       return;
    }
+
+   /* Video-only formats don't have conversion functions, so they should have
+    * been taken care of before reaching this location. */
+   ASSERT(!_al_pixel_format_is_video_only(src_format));
+   ASSERT(!_al_pixel_format_is_video_only(dst_format));
 
    (_al_convert_funcs[src_format][dst_format])(src, src_pitch,
       dst, dst_pitch, sx, sy, dx, dy, width, height);
@@ -494,9 +666,19 @@ ALLEGRO_BITMAP *al_clone_bitmap(ALLEGRO_BITMAP *bitmap)
    clone = al_create_bitmap(bitmap->w, bitmap->h);
    if (!clone)
       return NULL;
-   transfer_bitmap_data(bitmap, clone);
+   if (!transfer_bitmap_data(bitmap, clone)) {
+      al_destroy_bitmap(clone);
+      return NULL;
+   }
    return clone;
 }
 
+/* Function: al_backup_dirty_bitmap
+ */
+void al_backup_dirty_bitmap(ALLEGRO_BITMAP *bitmap)
+{
+   if (bitmap->vt && bitmap->vt->backup_dirty_bitmap)
+      bitmap->vt->backup_dirty_bitmap(bitmap);
+}
 
 /* vim: set ts=8 sts=3 sw=3 et: */

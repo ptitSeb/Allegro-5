@@ -9,33 +9,6 @@
 extern "C" {
 #endif
 
-#if defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID
-#ifdef ALLEGRO_CFG_NO_GLES2
-GL_API PFNGLBLENDEQUATIONOESPROC glBlendEquation;
-GL_API PFNGLBLENDFUNCSEPARATEOESPROC glBlendFuncSeparate;
-GL_API PFNGLBLENDEQUATIONSEPARATEOESPROC glBlendEquationSeparate;
-GL_API PFNGLGENERATEMIPMAPOESPROC glGenerateMipmapEXT;
-GL_API PFNGLBINDFRAMEBUFFEROESPROC glBindFramebufferEXT;
-GL_API PFNGLDELETEFRAMEBUFFERSOESPROC glDeleteFramebuffersEXT;
-GL_API PFNGLGENFRAMEBUFFERSOESPROC glGenFramebuffersEXT;
-GL_API PFNGLCHECKFRAMEBUFFERSTATUSOESPROC glCheckFramebufferStatusEXT;
-GL_API PFNGLFRAMEBUFFERTEXTURE2DOESPROC glFramebufferTexture2DEXT;
-GL_API PFNGLDRAWTEXIOESPROC glDrawTexiOES;
-#else
-//#define glGenerateMipmapEXT		glGenerateMipmap
-// All functions to emulate GLES1.1 over GLES2
-/* MatrixMode */
-#if 0
-#define GL_MODELVIEW                      0x1700
-#define GL_PROJECTION                     0x1701
-#define GL_TEXTURE                        0x1702
-void glMatrixMode (GLenum mode);
-void glLoadMatrixf (const GLfloat *m);
-#else
-#define ALLEGRO_NO_GLES1
-#endif
-#endif
-#endif
 
 enum {
    _ALLEGRO_OPENGL_VERSION_0     = 0, /* dummy */
@@ -63,10 +36,35 @@ enum {
    FBO_INFO_PERSISTENT  = 2   /* exclusive to the owner bitmap */
 };
 
+typedef struct ALLEGRO_FBO_BUFFERS
+{
+   /* It is not easy to determine the best lifetime for these. Unlike
+    * FBOs they are heavy objects and re-creating them can be costly.
+    * However if we make them part of ALLEGRO_BITMAP_EXTRA_OPENGL
+    * below, there is no way to release them. I.e. if you create
+    * many bitmaps in the beginning of your game and need depth and/or
+    * multisampling for them, the only way to free the buffers would be
+    * to copy those bitmaps and then destroy them.
+    *
+    * By tying them to the FBO struct, there is a limit of how many
+    * buffers Allegro will create before recycling them. This will
+    * work very well in the case where you only have one or a few
+    * bitmaps you regularly draw into.
+    */
+   GLuint depth_buffer;
+   int dw, dh, depth;
+   
+   GLuint multisample_buffer;
+   int mw, mh, samples;
+} ALLEGRO_FBO_BUFFERS;
+
 typedef struct ALLEGRO_FBO_INFO
 {
    int fbo_state;
    GLuint fbo;
+
+   ALLEGRO_FBO_BUFFERS buffers;
+      
    ALLEGRO_BITMAP *owner;
    double last_use_time;
 } ALLEGRO_FBO_INFO;
@@ -82,7 +80,15 @@ typedef struct ALLEGRO_BITMAP_EXTRA_OPENGL
 
    ALLEGRO_FBO_INFO *fbo_info;
 
+   /* When an OpenGL bitmap is locked, the locked region is usually backed by a
+    * temporary memory buffer pointed to by lock_buffer.
+    *
+    * On GLES, a locked backbuffer may be backed by a texture bitmap pointed to
+    * by lock_proxy instead, and lock_buffer is NULL.  Upon unlocking the proxy
+    * bitmap is drawn onto the backbuffer.
+    */
    unsigned char *lock_buffer;
+   ALLEGRO_BITMAP *lock_proxy;
 
    float left, top, right, bottom; /* Texture coordinates. */
    bool is_backbuffer; /* This is not a real bitmap, but the backbuffer. */
@@ -161,7 +167,8 @@ void _al_ogl_unmanage_extensions(ALLEGRO_DISPLAY *disp);
 
 /* bitmap */
 int _al_ogl_get_glformat(int format, int component);
-ALLEGRO_BITMAP *_al_ogl_create_bitmap(ALLEGRO_DISPLAY *d, int w, int h);
+ALLEGRO_BITMAP *_al_ogl_create_bitmap(ALLEGRO_DISPLAY *d, int w, int h,
+    int format, int flags);
 void _al_ogl_upload_bitmap_memory(ALLEGRO_BITMAP *bitmap, int format, void *ptr);
 
 /* locking */
@@ -170,10 +177,12 @@ void _al_ogl_upload_bitmap_memory(ALLEGRO_BITMAP *bitmap, int format, void *ptr)
       int x, int y, int w, int h, int format, int flags);
    void _al_ogl_unlock_region_new(ALLEGRO_BITMAP *bitmap);
 #else
-   ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_old_gles(ALLEGRO_BITMAP *bitmap,
+   ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_gles(ALLEGRO_BITMAP *bitmap,
       int x, int y, int w, int h, int format, int flags);
-   void _al_ogl_unlock_region_old_gles(ALLEGRO_BITMAP *bitmap);
+   void _al_ogl_unlock_region_gles(ALLEGRO_BITMAP *bitmap);
 #endif
+
+int _al_ogl_pixel_alignment(int pixel_size, bool compressed);
 
 /* framebuffer objects */
 GLint _al_ogl_bind_framebuffer(GLint fbo);
@@ -182,10 +191,15 @@ bool _al_ogl_create_persistent_fbo(ALLEGRO_BITMAP *bitmap);
 ALLEGRO_FBO_INFO *_al_ogl_persist_fbo(ALLEGRO_DISPLAY *display,
                                       ALLEGRO_FBO_INFO *transient_fbo_info);
 void _al_ogl_setup_fbo(ALLEGRO_DISPLAY *display, ALLEGRO_BITMAP *bitmap);
+bool _al_ogl_setup_fbo_non_backbuffer(ALLEGRO_DISPLAY *display,
+                                      ALLEGRO_BITMAP *bitmap);
+void _al_ogl_del_fbo(ALLEGRO_FBO_INFO *info);
 
 /* common driver */
 void _al_ogl_setup_gl(ALLEGRO_DISPLAY *d);
 void _al_ogl_set_target_bitmap(ALLEGRO_DISPLAY *display, ALLEGRO_BITMAP *bitmap);
+void _al_ogl_unset_target_bitmap(ALLEGRO_DISPLAY *display, ALLEGRO_BITMAP *bitmap);
+void _al_ogl_finalize_fbo(ALLEGRO_DISPLAY *display, ALLEGRO_BITMAP *bitmap);
 void _al_ogl_setup_bitmap_clipping(const ALLEGRO_BITMAP *bitmap);
 ALLEGRO_BITMAP *_al_ogl_get_backbuffer(ALLEGRO_DISPLAY *d);
 ALLEGRO_BITMAP* _al_ogl_create_backbuffer(ALLEGRO_DISPLAY *disp);
@@ -206,6 +220,9 @@ void _al_ogl_update_render_state(ALLEGRO_DISPLAY *display);
 #ifdef ALLEGRO_CFG_SHADER_GLSL
    bool _al_glsl_set_projview_matrix(GLint projview_matrix_loc,
       const ALLEGRO_TRANSFORM *t);
+   void _al_glsl_init_shaders(void);
+   void _al_glsl_shutdown_shaders(void);
+   void _al_glsl_unuse_shaders(void);
 #endif
 
 

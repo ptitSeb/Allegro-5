@@ -1,5 +1,4 @@
 #include <allegro5/allegro.h>
-#include <allegro5/allegro_native_dialog.h>
 #include <stdio.h>
 #include <ctype.h>
 #include "background_scroller.h"
@@ -251,7 +250,7 @@ static DATA_ENTRY *load_data_entries(char const *path)
    DATA_ENTRY *d = calloc(DEMO_DATA_COUNT + 1, sizeof *d);
    load(d, DEMO_BMP_BACK,        "bitmap",   path, "menu",     "back", "png", 0);
    load(d, DEMO_FONT,            "font",     path, "menu",     "cancunsmall", "png", 0);
-   load(d, DEMO_FONT_LOGO,       "font",     path, "examples/data",     "DejaVuSans", "ttf", 80);
+   load(d, DEMO_FONT_LOGO,       "font",     path, "menu",     "logofont", "png", 0);
    load(d, DEMO_MIDI_INGAME,     "music",    path, "menu",     "skate2", "ogg", 0);
    load(d, DEMO_MIDI_INTRO,      "music",    path, "menu",     "intro_music", "ogg", 0);
    load(d, DEMO_MIDI_MENU,       "music",    path, "menu",     "menu_music", "ogg", 0);
@@ -449,19 +448,4 @@ int my_stricmp(const char *s1, const char *s2)
     }
 
     return v;
-}
-
-void allegro_message(const char *fmt, ...)
-{
-   va_list ap;
-   ALLEGRO_USTR *u = al_ustr_new(""); 
-
-   va_start(ap, fmt);
-   al_ustr_vappendf(u, fmt, ap);
-   va_end(ap);
-   
-   al_show_native_message_box(screen, "Allegro Skater Demo",
-      "Message", al_cstr(u), NULL, 0);
-      
-   al_ustr_free(u);
 }

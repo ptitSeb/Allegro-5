@@ -273,13 +273,16 @@ static void init(void)
    draw_pattern(ex.pattern);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
    ALLEGRO_CONFIG *config;
    char const *value;
    char str[256];
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -290,6 +293,7 @@ int main(void)
    al_install_mouse();
    al_init_image_addon();
    al_init_font_addon();
+   init_platform_specific();
 
    /* Read supersampling info from ex_draw.ini. */
    ex.samples = 0;

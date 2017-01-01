@@ -55,8 +55,6 @@ static bool using_higher_res_timer;
 
 static ALLEGRO_SYSTEM_WIN *_al_win_system;
 
-static bool d3d_available = true;
-
 /* _WinMain:
  *  Entry point for Windows GUI programs, hooked by a macro in alwin.h,
  *  which makes it look as if the application can still have a normal
@@ -140,13 +138,48 @@ int _WinMain(void *_main, void *hInst, void *hPrev, char *Cmd, int nShow)
 }
 
 
-static bool maybe_d3d_init_display(void)
+static void set_dpi_awareness(void)
 {
-#ifdef ALLEGRO_CFG_D3D
-   return _al_d3d_init_display();
-#else
-   return false;
-#endif
+   bool dpi_awareness_set = false;
+   /* We load the shcore DLL and the APIs dynamically because these are
+    * not often included in MinGW headers. */
+   HMODULE shcore_dll = _al_win_safe_load_library("shcore.dll");
+   if (shcore_dll) {
+      typedef enum _AL_PROCESS_DPI_AWARENESS {
+        AL_PROCESS_DPI_UNAWARE            = 0,
+        AL_PROCESS_SYSTEM_DPI_AWARE       = 1,
+        AL_PROCESS_PER_MONITOR_DPI_AWARE  = 2
+      } AL_PROCESS_DPI_AWARENESS;
+      typedef HRESULT (WINAPI *SetProcessDpiAwarenessPROC)(AL_PROCESS_DPI_AWARENESS);
+      SetProcessDpiAwarenessPROC imp_SetProcessDpiAwareness =
+         (SetProcessDpiAwarenessPROC)GetProcAddress(shcore_dll, "SetProcessDpiAwareness");
+      if (imp_SetProcessDpiAwareness) {
+         /* Try setting the per-monitor awareness first. It might fail on Win 8.1. */
+         HRESULT ret = imp_SetProcessDpiAwareness(AL_PROCESS_PER_MONITOR_DPI_AWARE);
+         if (ret == E_INVALIDARG) {
+            ret = imp_SetProcessDpiAwareness(AL_PROCESS_SYSTEM_DPI_AWARE);
+         }
+         if (ret == S_OK) {
+            dpi_awareness_set = true;
+         }
+      }
+      FreeLibrary(shcore_dll);
+   }
+
+   /* SetProcessDPIAware is an older API that corresponds to system dpi
+    * awareness above. This is the only option on pre-8.1 systems. */
+   if (!dpi_awareness_set) {
+      HMODULE user32_dll = _al_win_safe_load_library("user32.dll");
+      if (user32_dll) {
+         typedef BOOL (WINAPI *SetProcessDPIAwarePROC)(void);
+         SetProcessDPIAwarePROC imp_SetProcessDPIAware =
+            (SetProcessDPIAwarePROC)GetProcAddress(user32_dll, "SetProcessDPIAware");
+         if (imp_SetProcessDPIAware) {
+            imp_SetProcessDPIAware();
+         }
+         FreeLibrary(user32_dll);
+      }
+   }
 }
 
 
@@ -154,6 +187,8 @@ static bool maybe_d3d_init_display(void)
 static ALLEGRO_SYSTEM *win_initialize(int flags)
 {
    (void)flags;
+
+   set_dpi_awareness();
 
    _al_win_system = al_calloc(1, sizeof *_al_win_system);
 
@@ -169,8 +204,6 @@ static ALLEGRO_SYSTEM *win_initialize(int flags)
 
    _al_win_system->system.vt = vt;
 
-   d3d_available = maybe_d3d_init_display();
-
    return &_al_win_system->system;
 }
 
@@ -178,7 +211,6 @@ static ALLEGRO_SYSTEM *win_initialize(int flags)
 static void win_shutdown(void)
 {
    ALLEGRO_SYSTEM *s;
-   ALLEGRO_DISPLAY_INTERFACE *display_driver;
    ASSERT(vt);
 
    /* Close all open displays. */
@@ -186,16 +218,14 @@ static void win_shutdown(void)
    while (_al_vector_size(&s->displays) > 0) {
       ALLEGRO_DISPLAY **dptr = _al_vector_ref(&s->displays, 0);
       ALLEGRO_DISPLAY *d = *dptr;
-      _al_destroy_display_bitmaps(d);
       al_destroy_display(d);
    }
 
    _al_vector_free(&s->displays);
 
-   display_driver = vt->get_display_driver();
-   if (display_driver && display_driver->shutdown) {
-      display_driver->shutdown();
-   }
+#ifdef ALLEGRO_CFG_D3D
+   _al_d3d_shutdown_display();
+#endif
 
    _al_win_shutdown_time();
 
@@ -215,15 +245,17 @@ static ALLEGRO_DISPLAY_INTERFACE *win_get_display_driver(void)
 {
    const int flags = al_get_new_display_flags();
    ALLEGRO_SYSTEM *sys = al_get_system_driver();
+   ALLEGRO_CONFIG *sys_cfg = al_get_system_config();
    ALLEGRO_SYSTEM_WIN *syswin = (ALLEGRO_SYSTEM_WIN *)sys;
+   const char *s;
 
    /* Look up the toggle_mouse_grab_key binding.  This isn't such a great place
     * to do it, but the config file is not available in win_initialize,
     * and this is neutral between the D3D and OpenGL display drivers.
     */
-   if (sys->config && !syswin->toggle_mouse_grab_keycode) {
-      const char *binding = al_get_config_value(sys->config,
-         "keyboard", "toggle_mouse_grab_key");
+   if (!syswin->toggle_mouse_grab_keycode) {
+      const char *binding = al_get_config_value(sys_cfg, "keyboard",
+         "toggle_mouse_grab_key");
       if (binding) {
          syswin->toggle_mouse_grab_keycode = _al_parse_key_binding(binding,
             &syswin->toggle_mouse_grab_modifiers);
@@ -239,11 +271,10 @@ static ALLEGRO_DISPLAY_INTERFACE *win_get_display_driver(void)
    /* Programmatic selection. */
 #ifdef ALLEGRO_CFG_D3D
    if (flags & ALLEGRO_DIRECT3D_INTERNAL) {
-      if (d3d_available) {
-         return _al_display_d3d_driver();
-      }
-      ALLEGRO_WARN("Direct3D graphics driver not available.\n");
-      return NULL;
+      ALLEGRO_DISPLAY_INTERFACE* iface = _al_display_d3d_driver();
+      if (iface == NULL)
+         ALLEGRO_WARN("Direct3D graphics driver not available.\n");
+      return iface;
    }
 #endif
 #ifdef ALLEGRO_CFG_OPENGL
@@ -256,36 +287,38 @@ static ALLEGRO_DISPLAY_INTERFACE *win_get_display_driver(void)
     * The user may unknowingly set a value which was configured out at compile
     * time.  The value should have no effect instead of causing a failure.
     */
-   if (sys->config) {
-      const char *s = al_get_config_value(sys->config, "graphics", "driver");
-      if (s) {
-         ALLEGRO_DEBUG("Configuration value graphics.driver = %s\n", s);
-         if (0 == _al_stricmp(s, "DIRECT3D") || 0 == _al_stricmp(s, "D3D")) {
+   s = al_get_config_value(sys_cfg, "graphics", "driver");
+   if (s) {
+      ALLEGRO_DEBUG("Configuration value graphics.driver = %s\n", s);
+      if (0 == _al_stricmp(s, "DIRECT3D") || 0 == _al_stricmp(s, "D3D")) {
 #ifdef ALLEGRO_CFG_D3D
-            if (d3d_available) {
-               al_set_new_display_flags(flags | ALLEGRO_DIRECT3D_INTERNAL);
-               return _al_display_d3d_driver();
-            }
-#endif
+         ALLEGRO_DISPLAY_INTERFACE* iface = _al_display_d3d_driver();
+         if (iface != NULL) {
+            al_set_new_display_flags(flags | ALLEGRO_DIRECT3D_INTERNAL);
+            return iface;
          }
-         else if (0 == _al_stricmp(s, "OPENGL")) {
+#endif
+      }
+      else if (0 == _al_stricmp(s, "OPENGL")) {
 #ifdef ALLEGRO_CFG_OPENGL
-            al_set_new_display_flags(flags | ALLEGRO_OPENGL);
-            return _al_display_wgl_driver();
+         al_set_new_display_flags(flags | ALLEGRO_OPENGL);
+         return _al_display_wgl_driver();
 #endif
-         }
-         else if (0 != _al_stricmp(s, "DEFAULT")) {
-            ALLEGRO_WARN("Graphics driver selection unrecognised: %s\n", s);
-         }
+      }
+      else if (0 != _al_stricmp(s, "DEFAULT")) {
+         ALLEGRO_WARN("Graphics driver selection unrecognised: %s\n", s);
       }
    }
 
    /* Automatic graphics driver selection. */
    /* XXX is implicitly setting new_display_flags the desired behaviour? */
 #ifdef ALLEGRO_CFG_D3D
-   if (d3d_available) {
-      al_set_new_display_flags(flags | ALLEGRO_DIRECT3D_INTERNAL);
-      return _al_display_d3d_driver();
+   {
+      ALLEGRO_DISPLAY_INTERFACE* iface = _al_display_d3d_driver();
+      if (iface != NULL) {
+         al_set_new_display_flags(flags | ALLEGRO_DIRECT3D_INTERNAL);
+         return iface;
+      }
    }
 #endif
 #ifdef ALLEGRO_CFG_OPENGL
@@ -304,10 +337,93 @@ static ALLEGRO_KEYBOARD_DRIVER *win_get_keyboard_driver(void)
    return _al_keyboard_driver_list[0].driver;
 }
 
+
+/* Checks whether the configured joystick driver is of the given name.
+ * Also returns false if the configuration entry was not set.
+ */
+static bool win_configured_joystick_driver_is(const char * name)
+{
+   const char * driver;
+   ALLEGRO_CONFIG * sysconf = al_get_system_config();
+   if (!sysconf) return false;
+   driver = al_get_config_value(sysconf, "joystick", "driver");
+   if (!driver) return false;
+   ALLEGRO_DEBUG("Configuration value joystick.driver = %s\n", driver);
+   return (0 == _al_stricmp(driver, name));
+}
+
+
+/* Checks whether xinput should be used or not not according
+ * to configuration.
+ */
+static bool win_use_xinput(void)
+{
+   return win_configured_joystick_driver_is("XINPUT");
+}
+
+/* Checks whether directinput should be used or not not according
+ * to configuration.
+ */
+static bool win_use_directinput(void)
+{
+   return win_configured_joystick_driver_is("DIRECTINPUT");
+}
+
+
+/* By default the combined xinput/directinput driver is used unless directinput
+ * or xinput exclusive is set.*/
 static ALLEGRO_JOYSTICK_DRIVER *win_get_joystick_driver(void)
 {
-   return _al_joystick_driver_list[0].driver;
+   if (win_use_directinput()) {
+      ALLEGRO_DEBUG("Selected DirectInput joystick driver.\n");
+      return &_al_joydrv_directx;
+   }
+   
+  if (win_use_xinput()) {
+#ifdef ALLEGRO_CFG_XINPUT
+      ALLEGRO_DEBUG("Selected XInput joystick driver.\n");
+      return &_al_joydrv_xinput;
+#else            
+      ALLEGRO_WARN("XInput joystick driver not supported.\n");
+#endif
+   }
+
+#ifdef ALLEGRO_CFG_XINPUT
+      ALLEGRO_DEBUG("Selected combined XInput/DirectInput joystick driver.\n");
+      return &_al_joydrv_windows_all;
+#else
+      ALLEGRO_WARN("Combined XInput/DirectInput joystick driver not supported. Usign DirectInput in stead.\n");
+      return &_al_joydrv_directx;
+#endif
 }
+
+/* By default the combined haptic driver is used unless directinput or
+ * xinput exclusive is set in the configuration.*/
+static ALLEGRO_HAPTIC_DRIVER *win_get_haptic_driver(void)
+{
+   if (win_use_directinput()) {
+      ALLEGRO_DEBUG("Selected DirectInput haptic driver.\n");
+      return &_al_hapdrv_directx;
+   }
+   
+  if (win_use_xinput()) {
+#ifdef ALLEGRO_CFG_XINPUT
+      ALLEGRO_DEBUG("Selected XInput haptic driver.\n");
+      return &_al_hapdrv_xinput;
+#else            
+      ALLEGRO_WARN("XInput haptic driver not supported.\n");
+#endif
+   }
+
+#ifdef ALLEGRO_CFG_XINPUT
+      ALLEGRO_DEBUG("Selected combined XInput/DirectInput haptic driver.\n");
+      return &_al_hapdrv_windows_all;
+#else
+      ALLEGRO_WARN("Combined XInput/DirectInput haptic driver not supported. Using DirectInput in stead.\n");
+      return &_al_hapdrv_directx;
+#endif
+}
+
 
 static int win_get_num_display_modes(void)
 {
@@ -443,6 +559,8 @@ static ALLEGRO_TOUCH_INPUT_DRIVER *win_get_touch_input_driver(void)
 ALLEGRO_PATH *_al_win_get_path(int id)
 {
    char path[MAX_PATH];
+   wchar_t pathw[MAX_PATH];
+   ALLEGRO_USTR *pathu;
    uint32_t csidl = 0;
    HRESULT ret = 0;
    ALLEGRO_PATH *cisdl_path = NULL;
@@ -450,12 +568,15 @@ ALLEGRO_PATH *_al_win_get_path(int id)
    switch (id) {
       case ALLEGRO_TEMP_PATH: {
          /* Check: TMP, TMPDIR, TEMP or TEMPDIR */
-         DWORD ret = GetTempPath(MAX_PATH, path);
+
+         DWORD ret = GetTempPathW(MAX_PATH, pathw);
          if (ret > MAX_PATH) {
             /* should this ever happen, windows is more broken than I ever thought */
             return NULL;
          }
-
+         pathu = al_ustr_new_from_utf16(pathw);
+         al_ustr_to_buffer(pathu, path, sizeof path);
+         al_ustr_free(pathu);
          return al_create_path_for_directory(path);
 
       } break;
@@ -463,7 +584,11 @@ ALLEGRO_PATH *_al_win_get_path(int id)
       case ALLEGRO_RESOURCES_PATH: { /* where the program is in */
          HANDLE process = GetCurrentProcess();
          char *ptr;
-         GetModuleFileNameEx(process, NULL, path, MAX_PATH);
+
+         GetModuleFileNameExW(process, NULL, pathw, MAX_PATH);
+         pathu = al_ustr_new_from_utf16(pathw);
+         al_ustr_to_buffer(pathu, path, sizeof path);
+         al_ustr_free(pathu);
          ptr = strrchr(path, '\\');
          if (!ptr) { /* shouldn't happen */
             return NULL;
@@ -491,7 +616,11 @@ ALLEGRO_PATH *_al_win_get_path(int id)
 
       case ALLEGRO_EXENAME_PATH: { /* full path to the exe including its name */
          HANDLE process = GetCurrentProcess();
-         GetModuleFileNameEx(process, NULL, path, MAX_PATH);
+
+         GetModuleFileNameExW(process, NULL, pathw, MAX_PATH);
+         pathu = al_ustr_new_from_utf16(pathw);
+         al_ustr_to_buffer(pathu, path, sizeof path);
+         al_ustr_free(pathu);
 
          return al_create_path(path);
       } break;
@@ -500,10 +629,14 @@ ALLEGRO_PATH *_al_win_get_path(int id)
          return NULL;
    }
 
-   ret = SHGetFolderPath(NULL, csidl, NULL, SHGFP_TYPE_CURRENT, path);
+   ret = SHGetFolderPathW(NULL, csidl, NULL, SHGFP_TYPE_CURRENT, pathw);
    if (ret != S_OK) {
       return NULL;
    }
+
+   pathu = al_ustr_new_from_utf16(pathw);
+   al_ustr_to_buffer(pathu, path, sizeof path);
+   al_ustr_free(pathu);
 
    cisdl_path = al_create_path_for_directory(path);
    if (!cisdl_path)
@@ -676,6 +809,7 @@ static ALLEGRO_SYSTEM_INTERFACE *_al_system_win_driver(void)
    vt->get_keyboard_driver = win_get_keyboard_driver;
    vt->get_mouse_driver = win_get_mouse_driver;
    vt->get_touch_input_driver = win_get_touch_input_driver;
+   vt->get_haptic_driver = win_get_haptic_driver;
    vt->get_joystick_driver = win_get_joystick_driver;
    vt->get_num_display_modes = win_get_num_display_modes;
    vt->get_display_mode = win_get_display_mode;

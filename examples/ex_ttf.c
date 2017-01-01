@@ -1,7 +1,10 @@
+#define ALLEGRO_UNSTABLE
+
 #include <stdio.h>
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_ttf.h>
 #include <allegro5/allegro_primitives.h>
+#include <allegro5/allegro_image.h>
 
 #include "common.c"
 
@@ -13,6 +16,7 @@ struct Example
 {
     double fps;
     ALLEGRO_FONT *f1, *f2, *f3, *f4, *f5;
+    ALLEGRO_FONT *f_alex;
     ALLEGRO_CONFIG *config;
     int ranges_count;
 } ex;
@@ -38,6 +42,11 @@ static const char *get_string(const char *key)
     return (v) ? v : key;
 }
 
+static int ustr_at(ALLEGRO_USTR *string, int index)
+{
+   return al_ustr_get(string, al_ustr_offset(string, index));
+}
+
 static void render(void)
 {
     ALLEGRO_COLOR white = al_map_rgba_f(1, 1, 1, 1);
@@ -45,25 +54,56 @@ static void render(void)
     ALLEGRO_COLOR red = al_map_rgba_f(1, 0, 0, 1);
     ALLEGRO_COLOR green = al_map_rgba_f(0, 0.5, 0, 1);
     ALLEGRO_COLOR blue = al_map_rgba_f(0.1, 0.2, 1, 1);
+    ALLEGRO_COLOR purple = al_map_rgba_f(0.3, 0.1, 0.2, 1);
     int x, y, w, h, as, de, xpos, ypos;
+    unsigned int index;
     int target_w, target_h;
     ALLEGRO_USTR_INFO info, sub_info;
     const ALLEGRO_USTR *u;
+    ALLEGRO_USTR *tulip = al_ustr_new("Tulip");
+    ALLEGRO_USTR *dimension_text = al_ustr_new("Tulip");
+    ALLEGRO_USTR *vertical_text  = al_ustr_new("Rose.");
+    ALLEGRO_USTR *dimension_label = al_ustr_new("(dimensions)");
+    int prev_cp = -1;
 
     al_clear_to_color(white);
 
     al_hold_bitmap_drawing(true);
-   
-    al_draw_textf(ex.f1, black, 50,  50, 0, "Tulip (kerning)");
-    al_draw_textf(ex.f2, black, 50, 100, 0, "Tulip (no kerning)");
+
+    al_draw_textf(ex.f1, black, 50,  20, 0, "Tulip (kerning)");
+    al_draw_textf(ex.f2, black, 50,  80, 0, "Tulip (no kerning)");
+
+    x = 50;
+    y = 140;
+    for (index = 0; index < al_ustr_length(dimension_text); index ++) {
+       int cp  = ustr_at(dimension_text, index);
+       int bbx, bby, bbw, bbh;
+       al_get_glyph_dimensions(ex.f2, cp, &bbx, &bby, &bbw, &bbh);
+       al_draw_rectangle(x + bbx + 0.5, y + bby + 0.5, x + bbx + bbw - 0.5, y + bby + bbh - 0.5, blue, 1);
+       al_draw_rectangle(x + 0.5, y + 0.5, x + bbx + bbw - 0.5, y + bby + bbh - 0.5, green, 1);
+       al_draw_glyph(ex.f2, purple, x, y, cp);
+       x += al_get_glyph_advance(ex.f2, cp, ALLEGRO_NO_KERNING);
+    }
+    al_draw_line(50.5, y+0.5, x+0.5, y+0.5, red, 1);
+
+    for (index = 0; index < al_ustr_length(dimension_label); index++) {
+       int cp = ustr_at(dimension_label, index);
+       ALLEGRO_GLYPH g;
+       if (al_get_glyph(ex.f2, prev_cp, cp, &g)) {
+          al_draw_tinted_bitmap_region(g.bitmap, black, g.x, g.y, g.w, g.h, x + 10 + g.kerning + g.offset_x, y + g.offset_y, 0);
+          x += g.advance;
+       }
+       prev_cp = cp;
+    }
+
     al_draw_textf(ex.f3, black, 50, 200, 0, "This font has a size of 12 pixels, "
         "the one above has 48 pixels.");
 
     al_hold_bitmap_drawing(false);
     al_hold_bitmap_drawing(true);
 
-    al_draw_textf(ex.f3, red, 50, 220, 0, "The color can simply be changed.");
-        
+    al_draw_textf(ex.f3, red, 50, 220, 0, "The color can simply be changed.🐊← fallback glyph");
+
     al_hold_bitmap_drawing(false);
     al_hold_bitmap_drawing(true);
 
@@ -83,7 +123,72 @@ static void render(void)
     u = al_ref_cstr(&info, get_string("substr4"));
     al_draw_ustr(ex.f3, green, 50, 380, 0, SUB(0, 11));
 
-    al_draw_textf(ex.f5, black, 50, 420, 0, "forced monochrome");
+    al_draw_textf(ex.f5, black, 50, 395, 0, "forced monochrome");
+
+    /* Glyph rendering tests. */
+    al_draw_textf(ex.f3, red, 50, 410, 0, "Glyph adv Tu: %d, draw: ",
+                        al_get_glyph_advance(ex.f3, 'T', 'u'));
+    x = 50;
+    y = 425;
+    for (index = 0; index < al_ustr_length(tulip); index ++) {
+       int cp  = ustr_at(tulip, index);
+       /* Use al_get_glyph_advance for the stride, with no kerning. */
+       al_draw_glyph(ex.f3, red, x, y, cp);
+       x += al_get_glyph_advance(ex.f3, cp, ALLEGRO_NO_KERNING);
+    }
+
+    x = 50;
+    y = 440;
+    /* First draw a red string using al_draw_text, that should be hidden
+     * completely by the same text drawing in green per glyph
+     * using al_draw_glyph and al_get_glyph_advance below. */
+    al_draw_ustr(ex.f3, red, x, y, 0, tulip);
+    for (index = 0; index < al_ustr_length(tulip); index ++) {
+      int cp  = ustr_at(tulip, index);
+      int ncp = (index < (al_ustr_length(tulip) - 1)) ?
+         ustr_at(tulip, index + 1) : ALLEGRO_NO_KERNING;
+      /* Use al_get_glyph_advance for the stride and apply kerning. */
+      al_draw_glyph(ex.f3, green, x, y, cp);
+      x += al_get_glyph_advance(ex.f3, cp, ncp);
+    }
+
+    x = 50;
+    y = 466;
+    al_draw_ustr(ex.f3, red, x, y, 0, tulip);
+    for (index = 0; index < al_ustr_length(tulip); index ++) {
+      int cp  = ustr_at(tulip, index);
+      int bbx, bby, bbw, bbh;
+      al_get_glyph_dimensions(ex.f3, cp, &bbx, &bby, &bbw, &bbh);
+      al_draw_glyph(ex.f3, blue, x, y, cp);
+      x += bbx + bbw;
+    }
+
+
+    x = 10;
+    y = 30;
+    for (index = 0; index < al_ustr_length(vertical_text); index ++) {
+      int bbx, bby, bbw, bbh;
+      int cp  = ustr_at(vertical_text, index);
+      /* Use al_get_glyph_dimensions for the height to apply. */
+      al_get_glyph_dimensions(ex.f3, cp, &bbx, &bby, &bbw, &bbh);
+      al_draw_glyph(ex.f3, green, x, y, cp);
+      y += bby;
+      y += bbh;
+    }
+
+
+    x = 30;
+    y = 30;
+    for (index = 0; index < al_ustr_length(vertical_text); index ++) {
+      int bbx, bby, bbw, bbh;
+      int cp  = ustr_at(vertical_text, index);
+      /* Use al_get_glyph_dimensions for the height to apply, here bby is
+       * omited for the wrong result. */
+      al_get_glyph_dimensions(ex.f3, cp, &bbx, &bby, &bbw, &bbh);
+      al_draw_glyph(ex.f3, red, x, y, cp);
+      y += bbh;
+    }
+
 
     al_hold_bitmap_drawing(false);
 
@@ -100,9 +205,9 @@ static void render(void)
     x += xpos;
     y += ypos;
 
-    al_draw_rectangle(x, y, x + w, y + h, black, 0);
-    al_draw_line(x, y + as, x + w, y + as, black, 0);
-    al_draw_line(x, y + as + de, x + w, y + as + de, black, 0);
+    al_draw_rectangle(x, y, x + w - 0.5, y + h - 0.5, black, 0);
+    al_draw_line(x+0.5, y + as + 0.5, x + w - 0.5, y + as + 0.5, black, 0);
+    al_draw_line(x + 0.5, y + as + de + 0.5, x + w - 0.5, y + as + de + 0.5, black, 0);
 
     al_hold_bitmap_drawing(true);
     al_draw_textf(ex.f4, blue, xpos, ypos, 0, "Allegro");
@@ -115,11 +220,11 @@ static void render(void)
 
     al_draw_textf(ex.f3, black, 0, 0, 0, "%s: %d unicode ranges", font_file,
        ex.ranges_count);
-       
+
     al_hold_bitmap_drawing(false);
 }
 
-int main(int argc, const char *argv[])
+int main(int argc, char **argv)
 {
     ALLEGRO_DISPLAY *display;
     ALLEGRO_TIMER *timer;
@@ -137,6 +242,8 @@ int main(int argc, const char *argv[])
     al_install_mouse();
     al_init_font_addon();
     al_init_ttf_addon();
+    al_init_image_addon();
+    init_platform_specific();
 
 #ifdef ALLEGRO_IPHONE
     al_set_new_display_flags(ALLEGRO_FULLSCREEN_WINDOW);
@@ -160,9 +267,27 @@ int main(int argc, const char *argv[])
     ex.f4 = al_load_font(font_file, -140, 0);
     ex.f5 = al_load_font(font_file, 12, ALLEGRO_TTF_MONOCHROME);
 
-    if (!ex.f1 || !ex.f2 || !ex.f3 || !ex.f4) {
+    {
+        int ranges[] = {0x1F40A, 0x1F40A};
+        ALLEGRO_BITMAP *icon = al_load_bitmap("data/icon.png");
+		if (!icon) {
+			abort_example("Couldn't load data/icon.png.\n");
+		}
+        ALLEGRO_BITMAP *glyph = al_create_bitmap(50, 50);
+        al_set_target_bitmap(glyph);
+        al_clear_to_color(al_map_rgba_f(0, 0, 0, 0));
+        al_draw_rectangle(0.5, 0.5, 49.5, 49.5, al_map_rgb_f(1, 1, 0),
+         1);
+        al_draw_bitmap(icon, 1, 1, 0);
+        al_set_target_backbuffer(display);
+        ex.f_alex = al_grab_font_from_bitmap(glyph, 1, ranges);
+    }
+
+    if (!ex.f1 || !ex.f2 || !ex.f3 || !ex.f4 || !ex.f_alex) {
         abort_example("Could not load font: %s\n", font_file);
     }
+
+    al_set_fallback_font(ex.f3, ex.f_alex);
 
     ex.ranges_count = al_get_font_ranges(ex.f1, 0, NULL);
     print_ranges(ex.f1);

@@ -10,15 +10,11 @@
                   android:label="@string/app_name"
                   android:launchMode="singleTask"
                   android:screenOrientation="unspecified"
-                  android:configChanges="screenLayout|uiMode|orientation">
+                  android:configChanges="screenLayout|uiMode|orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
-            <!--  Tell Allegro the name of the game .so when using dynamic linking -->
-            <meta-data android:name="org.liballeg.app_name"
-                       android:value="allegro-example"/>
         </activity>
     </application>
 </manifest> 

@@ -15,10 +15,11 @@ static float zoom = 0;
 
 static void video_display(ALLEGRO_VIDEO *video)
 {
-   /* Videos often do not use square pixels - this returns the aspect
-    * ratio of the pixels.
+   /* Videos often do not use square pixels - these return the scaled dimensions
+    * of the video frame.
     */
-   float aspect_ratio = al_get_video_aspect_ratio(video);
+   float scaled_w = al_get_video_scaled_width(video);
+   float scaled_h = al_get_video_scaled_height(video);
    /* Get the currently visible frame of the video, based on clock
     * time.
     */
@@ -31,18 +32,18 @@ static void video_display(ALLEGRO_VIDEO *video)
    if (!frame)
       return;
 
-   if (zoom == 0 && aspect_ratio > 0.0f) {
+   if (zoom == 0) {
       /* Always make the video fit into the window. */
       h = al_get_display_height(screen);
-      w = (int)(h * aspect_ratio);
+      w = (int)(h * scaled_w / scaled_h);
       if (w > al_get_display_width(screen)) {
          w = al_get_display_width(screen);
-         h = (int)(w / aspect_ratio);
+         h = (int)(w * scaled_h / scaled_w);
       }
    }
    else {
-      w = al_get_video_width(video);
-      h = al_get_video_height(video);
+      w = (int)scaled_w;
+      h = (int)scaled_h;
    }
    x = (al_get_display_width(screen) - w) / 2;
    y = (al_get_display_height(screen) - h) / 2;
@@ -54,21 +55,23 @@ static void video_display(ALLEGRO_VIDEO *video)
 
    /* Show some video information. */
    al_draw_filled_rounded_rectangle(4, 4,
-      al_get_display_width(screen) - 4, 4 + 14 * 3, 8, 8, bc);
-   p = al_get_video_position(video, 0);
+      al_get_display_width(screen) - 4, 4 + 14 * 4, 8, 8, bc);
+   p = al_get_video_position(video, ALLEGRO_VIDEO_POSITION_ACTUAL);
    al_draw_textf(font, tc, 8, 8 , 0, "%s", filename);
    al_draw_textf(font, tc, 8, 8 + 13, 0, "%3d:%02d (V: %+5.2f A: %+5.2f)",
       (int)(p / 60),
       ((int)p) % 60,
-      al_get_video_position(video, 1) - p,
-      al_get_video_position(video, 2) - p);
+      al_get_video_position(video, ALLEGRO_VIDEO_POSITION_VIDEO_DECODE) - p,
+      al_get_video_position(video, ALLEGRO_VIDEO_POSITION_AUDIO_DECODE) - p);
    al_draw_textf(font, tc, 8, 8 + 13 * 2, 0,
       "video rate %.02f (%dx%d, aspect %.1f) audio rate %.0f",
          al_get_video_fps(video),
-         al_get_video_width(video),
-         al_get_video_height(video),
-         al_get_video_aspect_ratio(video),
+         al_get_bitmap_width(frame),
+         al_get_bitmap_height(frame),
+         scaled_w / scaled_h,
          al_get_video_audio_rate(video));
+   al_draw_textf(font, tc, 8, 8 + 13 * 3, 0,
+      "playing: %s", al_is_video_playing(video) ? "true" : "false");
    al_flip_display();
    al_clear_to_color(al_map_rgb(0, 0, 0));
 }
@@ -82,6 +85,8 @@ int main(int argc, char *argv[])
    ALLEGRO_VIDEO *video;
    bool fullscreen = false;
    bool redraw = true;
+   bool use_frame_events = false;
+   int filename_arg_idx = 1;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -90,23 +95,32 @@ int main(int argc, char *argv[])
    open_log();
 
    if (argc < 2) {
-      log_printf("This example needs to be run from the command line.\nUsage: %s <file>\n", argv[0]);
+      log_printf("This example needs to be run from the command line.\n"
+                 "Usage: %s [--use-frame-events] <file>\n", argv[0]);
       goto done;
    }
 
+   /* If use_frame_events is false, we use a fixed FPS timer. If the video is
+    * displayed in a game this probably makes most sense. In a
+    * dedicated video player you probably want to listen to
+    * ALLEGRO_EVENT_VIDEO_FRAME_SHOW events and only redraw whenever one
+    * arrives - to reduce possible jitter and save CPU.
+    */
+   if (argc == 3 && strcmp(argv[1], "--use-frame-events") == 0) {
+      use_frame_events = true;
+      filename_arg_idx++;
+   }
+
+   if (!al_init_video_addon()) {
+      abort_example("Could not initialize the video addon.\n");
+   }
    al_init_font_addon();
    al_install_keyboard();
 
    al_install_audio();
    al_reserve_samples(1);
    al_init_primitives_addon();
-   
-   /* In this example we use a fixed FPS timer. If the video is
-    * displayed in a game this probably makes most sense. In a
-    * dedicated video player you probably want to listen to
-    * ALLEGRO_EVENT_VIDEO_FRAME events and only redraw whenever one
-    * arrives - to reduce possible jitter and save CPU.
-    */
+
    timer = al_create_timer(1.0 / 60);
 
    al_set_new_display_flags(ALLEGRO_RESIZABLE);
@@ -123,7 +137,7 @@ int main(int argc, char *argv[])
 
    al_set_new_bitmap_flags(ALLEGRO_MIN_LINEAR | ALLEGRO_MAG_LINEAR);
 
-   filename = argv[1];
+   filename = argv[filename_arg_idx];
    video = al_open_video(filename);
    if (!video) {
       abort_example("Cannot read %s.\n", filename);
@@ -160,7 +174,7 @@ int main(int argc, char *argv[])
          case ALLEGRO_EVENT_KEY_DOWN:
             switch (event.keyboard.keycode) {
                case ALLEGRO_KEY_SPACE:
-                  al_pause_video(video, !al_is_video_paused(video));
+                  al_set_video_playing(video, !al_is_video_playing(video));
                   break;
                case ALLEGRO_KEY_ESCAPE:
                   al_close_video(video);
@@ -180,7 +194,7 @@ int main(int argc, char *argv[])
                   goto do_seek;
 
                do_seek:
-                  al_seek_video(video, al_get_video_position(video, 0) + incr);
+                  al_seek_video(video, al_get_video_position(video, ALLEGRO_VIDEO_POSITION_ACTUAL) + incr);
                   break;
 
                case ALLEGRO_KEY_F:
@@ -213,7 +227,9 @@ int main(int argc, char *argv[])
                video_time = display_time + video_refresh_timer(is);
             }*/
 
-            redraw = true;
+            if (!use_frame_events) {
+               redraw = true;
+            }
             break;
 
          case ALLEGRO_EVENT_DISPLAY_CLOSE:
@@ -221,9 +237,15 @@ int main(int argc, char *argv[])
             goto done;
             break;
 
-         /*case ALLEGRO_EVENT_VIDEO_FRAME:
-            al_get_video_frame((void *)event.user.data1);
-            break;*/
+         case ALLEGRO_EVENT_VIDEO_FRAME_SHOW:
+            if (use_frame_events) {
+               redraw = true;
+            }
+            break;
+
+         case ALLEGRO_EVENT_VIDEO_FINISHED:
+            log_printf("video finished\n");
+            break;
          default:
             break;
       }

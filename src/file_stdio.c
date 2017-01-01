@@ -38,15 +38,28 @@
 #include <sys/stat.h>
 #endif
 
+ALLEGRO_DEBUG_CHANNEL("stdio")
 
 /* forward declaration */
 const struct ALLEGRO_FILE_INTERFACE _al_file_interface_stdio;
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
-static FILE *get_fp(ALLEGRO_FILE *f)
+
+typedef struct
+{
+   FILE *fp;
+   int errnum;
+   char errmsg[80];
+} USERDATA;
+
+
+static USERDATA *get_userdata(ALLEGRO_FILE *f)
 {
    if (f)
-      return (FILE *)al_get_file_userdata(f);
+      return al_get_file_userdata(f);
    else
       return NULL;
 }
@@ -57,21 +70,33 @@ static FILE *get_fp(ALLEGRO_FILE *f)
 ALLEGRO_FILE *al_fopen_fd(int fd, const char *mode)
 {
    ALLEGRO_FILE *f;
+   USERDATA *userdata;
    FILE *fp;
 
-   /* The fd should remain open if this function fails in either way. */
+   userdata = al_malloc(sizeof(USERDATA));
+   if (!userdata)
+      return NULL;
+
+   /* The fd should remain open if this function fails in any way,
+    * so delay the fdopen() call to last.
+    */
+   userdata->fp = NULL;
+   userdata->errnum = 0;
+
+   f = al_create_file_handle(&_al_file_interface_stdio, userdata);
+   if (!f) {
+      al_free(userdata);
+      return NULL;
+   }
+
    fp = fdopen(fd, mode);
    if (!fp) {
       al_set_errno(errno);
-      return NULL;
-   }
-   
-   f = al_create_file_handle(&_al_file_interface_stdio, fp);
-   if (!f) {
-      al_set_errno(errno);
+      al_fclose(f);
       return NULL;
    }
 
+   userdata->fp = fp;
    return f;
 }
 
@@ -79,6 +104,9 @@ ALLEGRO_FILE *al_fopen_fd(int fd, const char *mode)
 static void *file_stdio_fopen(const char *path, const char *mode)
 {
    FILE *fp;
+   USERDATA *userdata;
+
+   ALLEGRO_DEBUG("opening %s %s\n", path, mode);
 
 #ifdef ALLEGRO_WINDOWS
    {
@@ -97,22 +125,51 @@ static void *file_stdio_fopen(const char *path, const char *mode)
       return NULL;
    }
 
-   return fp;
+   userdata = al_malloc(sizeof(USERDATA));
+   if (!userdata) {
+      fclose(fp);
+      return NULL;
+   }
+
+   userdata->fp = fp;
+   userdata->errnum = 0;
+
+   return userdata;
 }
 
 
-static void file_stdio_fclose(ALLEGRO_FILE *f)
+static bool file_stdio_fclose(ALLEGRO_FILE *f)
 {
-   fclose(get_fp(f));
+   USERDATA *userdata = get_userdata(f);
+   bool ret;
+
+   if (userdata->fp == NULL) {
+      /* This can happen in the middle of al_fopen_fd. */
+      ret = true;
+   }
+   else if (fclose(userdata->fp) == 0) {
+      ret = true;
+   }
+   else {
+      al_set_errno(errno);
+      ret = false;
+   }
+
+   al_free(userdata);
+
+   return ret;
 }
 
 
 static size_t file_stdio_fread(ALLEGRO_FILE *f, void *ptr, size_t size)
 {
+   USERDATA *userdata = get_userdata(f);
+
    if (size == 1) {
       /* Optimise common case. */
-      int c = fgetc(get_fp(f));
+      int c = fgetc(userdata->fp);
       if (c == EOF) {
+         userdata->errnum = errno;
          al_set_errno(errno);
          return 0;
       }
@@ -120,8 +177,9 @@ static size_t file_stdio_fread(ALLEGRO_FILE *f, void *ptr, size_t size)
       return 1;
    }
    else {
-      size_t ret = fread(ptr, 1, size, get_fp(f));
+      size_t ret = fread(ptr, 1, size, userdata->fp);
       if (ret < size) {
+         userdata->errnum = errno;
          al_set_errno(errno);
       }
       return ret;
@@ -131,10 +189,12 @@ static size_t file_stdio_fread(ALLEGRO_FILE *f, void *ptr, size_t size)
 
 static size_t file_stdio_fwrite(ALLEGRO_FILE *f, const void *ptr, size_t size)
 {
+   USERDATA *userdata = get_userdata(f);
    size_t ret;
 
-   ret = fwrite(ptr, 1, size, get_fp(f));
+   ret = fwrite(ptr, 1, size, userdata->fp);
    if (ret < size) {
+      userdata->errnum = errno;
       al_set_errno(errno);
    }
 
@@ -144,9 +204,10 @@ static size_t file_stdio_fwrite(ALLEGRO_FILE *f, const void *ptr, size_t size)
 
 static bool file_stdio_fflush(ALLEGRO_FILE *f)
 {
-   FILE *fp = get_fp(f);
+   USERDATA *userdata = get_userdata(f);
 
-   if (fflush(fp) == EOF) {
+   if (fflush(userdata->fp) == EOF) {
+      userdata->errnum = errno;
       al_set_errno(errno);
       return false;
    }
@@ -157,15 +218,16 @@ static bool file_stdio_fflush(ALLEGRO_FILE *f)
 
 static int64_t file_stdio_ftell(ALLEGRO_FILE *f)
 {
-   FILE *fp = get_fp(f);
+   USERDATA *userdata = get_userdata(f);
    int64_t ret;
 
 #ifdef ALLEGRO_HAVE_FTELLO
-   ret = ftello(fp);
+   ret = ftello(userdata->fp);
 #else
-   ret = ftell(fp);
+   ret = ftell(userdata->fp);
 #endif
    if (ret == -1) {
+      userdata->errnum = errno;
       al_set_errno(errno);
    }
 
@@ -176,7 +238,7 @@ static int64_t file_stdio_ftell(ALLEGRO_FILE *f)
 static bool file_stdio_fseek(ALLEGRO_FILE *f, int64_t offset,
    int whence)
 {
-   FILE *fp = get_fp(f);
+   USERDATA *userdata = get_userdata(f);
    int rc;
 
    switch (whence) {
@@ -186,12 +248,13 @@ static bool file_stdio_fseek(ALLEGRO_FILE *f, int64_t offset,
    }
 
 #ifdef ALLEGRO_HAVE_FSEEKO
-   rc = fseeko(fp, offset, whence);
+   rc = fseeko(userdata->fp, offset, whence);
 #else
-   rc = fseek(fp, offset, whence);
+   rc = fseek(userdata->fp, offset, whence);
 #endif
 
    if (rc == -1) {
+      userdata->errnum = errno;
       al_set_errno(errno);
       return false;
    }
@@ -202,27 +265,68 @@ static bool file_stdio_fseek(ALLEGRO_FILE *f, int64_t offset,
 
 static bool file_stdio_feof(ALLEGRO_FILE *f)
 {
-   return feof(get_fp(f));
+   USERDATA *userdata = get_userdata(f);
+
+   return feof(userdata->fp);
 }
 
 
-static bool file_stdio_ferror(ALLEGRO_FILE *f)
+static int file_stdio_ferror(ALLEGRO_FILE *f)
 {
-   return ferror(get_fp(f));
+   USERDATA *userdata = get_userdata(f);
+
+   return ferror(userdata->fp);
+}
+
+
+static const char *file_stdio_ferrmsg(ALLEGRO_FILE *f)
+{
+   USERDATA *userdata = get_userdata(f);
+
+   if (userdata->errnum == 0)
+      return "";
+
+   /* Note: at this time MinGW has neither strerror_r nor strerror_s. */
+#if defined(ALLEGRO_HAVE_STRERROR_R)
+   {
+      int rc = strerror_r(userdata->errnum, userdata->errmsg,
+         sizeof(userdata->errmsg));
+      if (rc == 0) {
+         return userdata->errmsg;
+      }
+   }
+#endif
+
+#if defined(ALLEGRO_HAVE_STRERROR_S)
+   {
+      errno_t rc = strerror_s(userdata->errmsg, sizeof(userdata->errmsg),
+         userdata->errnum);
+      if (rc == 0) {
+         return userdata->errmsg;
+      }
+   }
+#endif
+
+   return "";
 }
 
 
 static void file_stdio_fclearerr(ALLEGRO_FILE *f)
 {
-   clearerr(get_fp(f));
+   USERDATA *userdata = get_userdata(f);
+
+   clearerr(userdata->fp);
 }
 
 
 static int file_stdio_fungetc(ALLEGRO_FILE *f, int c)
 {
-   int rc = ungetc(c, get_fp(f));
+   USERDATA *userdata = get_userdata(f);
+   int rc;
 
+   rc = ungetc(c, userdata->fp);
    if (rc == EOF) {
+      userdata->errnum = errno;
       al_set_errno(errno);
    }
 
@@ -237,24 +341,19 @@ static off_t file_stdio_fsize(ALLEGRO_FILE *f)
 
    old_pos = file_stdio_ftell(f);
    if (old_pos == -1)
-      goto Error;
+      return -1;
 
    if (!file_stdio_fseek(f, 0, ALLEGRO_SEEK_END))
-      goto Error;
+      return -1;
 
    new_pos = file_stdio_ftell(f);
    if (new_pos == -1)
-      goto Error;
+      return -1;
 
    if (!file_stdio_fseek(f, old_pos, ALLEGRO_SEEK_SET))
-      goto Error;
+      return -1;
 
    return new_pos;
-
-Error:
-
-   al_set_errno(errno);
-   return -1;
 }
 
 
@@ -269,6 +368,7 @@ const struct ALLEGRO_FILE_INTERFACE _al_file_interface_stdio =
    file_stdio_fseek,
    file_stdio_feof,
    file_stdio_ferror,
+   file_stdio_ferrmsg,
    file_stdio_fclearerr,
    file_stdio_fungetc,
    file_stdio_fsize
@@ -306,20 +406,12 @@ static void mktemp_replace_XX(const char *template, char *dst)
 }
 
 
-/* Function: al_make_temp_file
- */
-ALLEGRO_FILE *al_make_temp_file(const char *template, ALLEGRO_PATH **ret_path)
+static ALLEGRO_FILE *make_temp_file(const char *template, char *temp_filename,
+   ALLEGRO_PATH *path)
 {
-   ALLEGRO_PATH *path;
    ALLEGRO_FILE *f;
-   char filename[PATH_MAX];
    int fd;
    int i;
-
-   path = al_get_standard_path(ALLEGRO_TEMP_PATH);
-   if (!path) {
-      return NULL;
-   }
 
    /* Note: the path should be absolute.  The user is likely to want to remove
     * the file later.  If we return a relative path, the user might change the
@@ -329,8 +421,8 @@ ALLEGRO_FILE *al_make_temp_file(const char *template, ALLEGRO_PATH **ret_path)
     */
 
    for (i=0; i<MAX_MKTEMP_TRIES; ++i) {
-      mktemp_replace_XX(template, filename);
-      al_set_path_filename(path, filename);
+      mktemp_replace_XX(template, temp_filename);
+      al_set_path_filename(path, temp_filename);
 
 #ifndef ALLEGRO_MSVC
       fd = open(al_path_cstr(path, ALLEGRO_NATIVE_PATH_SEP),
@@ -346,7 +438,6 @@ ALLEGRO_FILE *al_make_temp_file(const char *template, ALLEGRO_PATH **ret_path)
 
    if (fd == -1) {
       al_set_errno(errno);
-      al_destroy_path(path);
       return NULL;
    }
 
@@ -355,11 +446,32 @@ ALLEGRO_FILE *al_make_temp_file(const char *template, ALLEGRO_PATH **ret_path)
       al_set_errno(errno);
       close(fd);
       unlink(al_path_cstr(path, ALLEGRO_NATIVE_PATH_SEP));
-      al_destroy_path(path);
       return NULL;
    }
 
-   if (ret_path)
+   return f;
+}
+
+
+/* Function: al_make_temp_file
+ */
+ALLEGRO_FILE *al_make_temp_file(const char *template, ALLEGRO_PATH **ret_path)
+{
+   char *temp_filename;
+   ALLEGRO_PATH *path;
+   ALLEGRO_FILE *f;
+
+   temp_filename = al_malloc(strlen(template) + 1);
+   path = al_get_standard_path(ALLEGRO_TEMP_PATH);
+
+   if (temp_filename && path)
+      f = make_temp_file(template, temp_filename, path);
+   else
+      f = NULL;
+
+   al_free(temp_filename);
+
+   if (f && ret_path)
       *ret_path = path;
    else
       al_destroy_path(path);

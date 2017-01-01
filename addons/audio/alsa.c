@@ -67,13 +67,10 @@ static int alsa_open(void)
 {
    alsa_device = default_device;
 
-   ALLEGRO_CONFIG *config = al_get_system_config();
-   if (config) {
-      const char *config_device;
-      config_device = al_get_config_value(config, "alsa", "device");
-      if (config_device && config_device[0] != '\0')
-         alsa_device = strdup(config_device);
-   }
+   const char *config_device;
+   config_device = al_get_config_value(al_get_system_config(), "alsa", "device");
+   if (config_device && config_device[0] != '\0')
+      alsa_device = strdup(config_device);
 
    ALSA_CHECK(snd_output_stdio_attach(&snd_output, stdout, 0));
 
@@ -339,18 +336,16 @@ static void *alsa_update_mmap(ALLEGRO_THREAD *self, void *arg)
       else if (voice->is_streaming && !alsa_voice->stopped) {
          /* This should fit. */
          unsigned int iframes = frames;
-         const void *data = _al_voice_update(voice, &iframes);
+         const void *data = _al_voice_update(voice, voice->mutex, &iframes);
          frames = iframes;
          if (data == NULL)
             goto silence;
          memcpy(mmap, data, frames * alsa_voice->frame_size);
       }
       else {
-         int silence;
 silence:
          /* If stopped just fill with silence. */
-         silence = _al_kcm_get_silence(voice->depth);
-         memset(mmap, silence, frames * alsa_voice->frame_size);
+         al_fill_silence(mmap, frames, voice->depth, voice->chan_conf);
       }
 
       snd_pcm_sframes_t commitres = snd_pcm_mmap_commit(alsa_voice->pcm_handle, offset, frames);
@@ -448,17 +443,15 @@ static void *alsa_update_rw(ALLEGRO_THREAD *self, void *arg)
       else if (voice->is_streaming && !alsa_voice->stopped) {
          /* This should fit. */
          unsigned int iframes = frames;
-         buf = (void *)_al_voice_update(voice, &iframes);
-         frames = iframes;
+         buf = (void *)_al_voice_update(voice, voice->mutex, &iframes);
          if (buf == NULL)
             goto silence;
+         frames = iframes;
       }
       else {
-         int silence;
 silence:
          /* If stopped just fill with silence. */
-         silence = _al_kcm_get_silence(voice->depth);
-         memset(data, silence, bytes);
+         al_fill_silence(data, frames, voice->depth, voice->chan_conf);
          buf = data;
       }
       err = snd_pcm_writei(alsa_voice->pcm_handle, buf, frames);
@@ -764,15 +757,12 @@ static int alsa_allocate_recorder(ALLEGRO_AUDIO_RECORDER *r)
    ALSA_RECORDER_DATA *data;
    unsigned int frequency = r->frequency;
    snd_pcm_format_t format;
-   ALLEGRO_CONFIG *config = al_get_system_config();
    const char *device = default_device;
-   
-   if (config) {
-      const char *config_device;
-      config_device = al_get_config_value(config, "alsa", "capture_device");
-      if (config_device && config_device[0] != '\0')
-         device = config_device;
-   }
+   const char *config_device;
+   config_device =
+      al_get_config_value(al_get_system_config(), "alsa", "capture_device");
+   if (config_device && config_device[0] != '\0')
+      device = config_device;
 
    data = al_calloc(1, sizeof(*data));
    

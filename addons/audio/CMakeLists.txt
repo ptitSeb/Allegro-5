@@ -42,7 +42,7 @@ if(WANT_PULSEAUDIO AND ALLEGRO_UNIX)
     pkg_check_modules(PULSEAUDIO libpulse-simple)
     if(PULSEAUDIO_FOUND)
         set(CMAKE_REQUIRED_INCLUDES ${PULSEAUDIO_INCLUDE_DIRS})
-        check_c_source_compiles("
+        run_c_compile_test("
             #include <pulse/simple.h>
             #include <pulse/error.h>
             #include <pulse/introspect.h>
@@ -89,7 +89,7 @@ if(SUPPORT_ALSA)
 endif(SUPPORT_ALSA)
 
 if(WANT_DSOUND AND WIN32)
-    find_package(DSound)
+    find_package(DirectX)
     if(DSOUND_FOUND)
         set(SUPPORT_DSOUND 1)
     endif(DSOUND_FOUND)
@@ -156,9 +156,17 @@ if(SUPPORT_OPENSL)
     set(SUPPORT_AUDIO 1)
 endif(SUPPORT_OPENSL)
 
+if(ALLEGRO_SDL)
+    set(ALLEGRO_CFG_KCM_SDL 1)
+    list(APPEND AUDIO_SOURCES sdl_audio.c)
+    list(APPEND AUDIO_LIBRARIES ${SDL2_LIBRARIES} )
+    list(APPEND AUDIO_INCLUDE_DIRECTORIES ${SDL2_INCLUDE_DIR})
+    set(SUPPORT_AUDIO 1)
+endif(ALLEGRO_SDL)
+
 configure_file(
     allegro5/internal/aintern_audio_cfg.h.cmake
-    ${CMAKE_BINARY_DIR}/include/allegro5/internal/aintern_audio_cfg.h
+    ${PROJECT_BINARY_DIR}/include/allegro5/internal/aintern_audio_cfg.h
     )
 
 if(NOT SUPPORT_AUDIO)
@@ -169,12 +177,11 @@ endif(NOT SUPPORT_AUDIO)
 include_directories(SYSTEM ${AUDIO_INCLUDE_DIRECTORIES})
 link_directories(${AUDIO_LINK_DIRECTORIES})
 add_our_addon_library(allegro_audio
+    AllegroAudio-${ALLEGRO_SOVERSION}
     "${AUDIO_SOURCES};${AUDIO_INCLUDE_FILES}"
     "-DALLEGRO_KCM_AUDIO_SRC"
     "${ALLEGRO_LINK_WITH};${AUDIO_LIBRARIES}"
     )
-
-set_our_framework_properties(allegro_audio AllegroAudio-${ALLEGRO_SOVERSION})
 
 install_our_headers(${AUDIO_INCLUDE_FILES})
 

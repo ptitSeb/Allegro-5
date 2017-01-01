@@ -1,9 +1,9 @@
 # Prefer local headers to system directories.
 include_directories(
-    ${CMAKE_SOURCE_DIR}/addons/main
-    ${CMAKE_SOURCE_DIR}/addons/audio
-    ${CMAKE_SOURCE_DIR}/addons/font
-    ${CMAKE_SOURCE_DIR}/addons/primitives
+    ${PROJECT_SOURCE_DIR}/addons/main
+    ${PROJECT_SOURCE_DIR}/addons/audio
+    ${PROJECT_SOURCE_DIR}/addons/font
+    ${PROJECT_SOURCE_DIR}/addons/primitives
     )
 
 set(SPEED_SRCS
@@ -25,10 +25,19 @@ if(NOT SUPPORT_AUDIO OR NOT SUPPORT_PRIMITIVES OR NOT SUPPORT_FONT)
     return()
 endif()
 
-if(COMPILER_GCC)
+if(COMPILER_GCC_OR_CLANG)
     set(CMAKE_C_FLAGS
         "${CMAKE_C_FLAGS} -Wno-strict-prototypes -Wno-missing-prototypes")
-endif(COMPILER_GCC)
+endif(COMPILER_GCC_OR_CLANG)
+
+if(ANDROID)
+    add_android_app(speed
+        "${SPEED_SRCS}"
+        "${ALLEGRO_LINK_WITH};${AUDIO_LINK_WITH};${PRIMITIVES_LINK_WITH};${FONT_LINK_WITH}"
+        ""
+        )
+    return()
+endif(ANDROID)
 
 if(APPLE)
     set(DEMO_EXECUTABLE_TYPE MACOSX_BUNDLE)

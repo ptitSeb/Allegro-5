@@ -33,26 +33,12 @@ typedef struct Handler
    ALLEGRO_IIO_SAVER_FUNCTION saver;
    ALLEGRO_IIO_FS_LOADER_FUNCTION fs_loader;
    ALLEGRO_IIO_FS_SAVER_FUNCTION fs_saver;
+   ALLEGRO_IIO_IDENTIFIER_FUNCTION identifier;
 } Handler;
 
 
 /* globals */
 static _AL_VECTOR iio_table = _AL_VECTOR_INITIALIZER(Handler);
-
-
-static Handler *find_handler(const char *extension)
-{
-   unsigned i;
-
-   for (i = 0; i < _al_vector_size(&iio_table); i++) {
-      Handler *l = _al_vector_ref(&iio_table, i);
-      if (0 == _al_stricmp(extension, l->extension)) {
-         return l;
-      }
-   }
-
-   return NULL;
-}
 
 
 static Handler *add_iio_table_f(const char *ext)
@@ -65,8 +51,53 @@ static Handler *add_iio_table_f(const char *ext)
    ent->saver = NULL;
    ent->fs_loader = NULL;
    ent->fs_saver = NULL;
+   ent->identifier = NULL;
 
    return ent;
+}
+
+
+static Handler *find_handler(const char *extension, bool create_if_not)
+{
+   unsigned i;
+
+   ASSERT(extension);
+
+   if (strlen(extension) + 1 >= MAX_EXTENSION) {
+      return NULL;
+   }
+
+   for (i = 0; i < _al_vector_size(&iio_table); i++) {
+      Handler *l = _al_vector_ref(&iio_table, i);
+      if (0 == _al_stricmp(extension, l->extension)) {
+         return l;
+      }
+   }
+
+   if (create_if_not)
+      return add_iio_table_f(extension);
+
+   return NULL;
+}
+
+
+static Handler *find_handler_for_file(ALLEGRO_FILE *f)
+{
+   unsigned i;
+
+   ASSERT(f);
+
+   for (i = 0; i < _al_vector_size(&iio_table); i++) {
+      Handler *l = _al_vector_ref(&iio_table, i);
+      if (l->identifier) {
+         int64_t pos = al_ftell(f);
+         bool identified = l->identifier(f);
+         al_fseek(f, pos, ALLEGRO_SEEK_SET);
+         if (identified)
+            return l;
+      }
+   }
+   return NULL;
 }
 
 
@@ -81,33 +112,23 @@ void _al_init_iio_table(void)
    _al_add_exit_func(free_iio_table, "free_iio_table");
 }
 
+#define REGISTER(function) \
+   Handler *ent = find_handler(extension, function != NULL); \
+   if (!function) { \
+      if (!ent || !ent->function) { \
+         return false; /* Nothing to remove. */ \
+      } \
+   } \
+   ent->function = function; \
+   return true;
+
 
 /* Function: al_register_bitmap_loader
  */
 bool al_register_bitmap_loader(const char *extension,
    ALLEGRO_BITMAP *(*loader)(const char *filename, int flags))
 {
-   Handler *ent;
-
-   ASSERT(extension);
-
-   if (strlen(extension) + 1 >= MAX_EXTENSION) {
-      return false;
-   }
-
-   ent = find_handler(extension);
-   if (!loader) {
-       if (!ent || !ent->loader) {
-         return false; /* Nothing to remove. */
-       }
-   }
-   else if (!ent) {
-       ent = add_iio_table_f(extension);
-   }
-
-   ent->loader = loader;
-
-   return true;
+   REGISTER(loader)
 }
 
 
@@ -116,87 +137,34 @@ bool al_register_bitmap_loader(const char *extension,
 bool al_register_bitmap_saver(const char *extension,
    bool (*saver)(const char *filename, ALLEGRO_BITMAP *bmp))
 {
-   Handler *ent;
-
-   ASSERT(extension);
-   ASSERT(saver);
-
-   if (strlen(extension) + 1 >= MAX_EXTENSION) {
-      return false;
-   }
-
-   ent = find_handler(extension);
-   if (!saver) {
-       if (!ent || !ent->saver) {
-         return false; /* Nothing to remove. */
-       }
-   }
-   else if (!ent) {
-       ent = add_iio_table_f(extension);
-   }
-
-   ent->saver = saver;
-
-   return true;
+   REGISTER(saver)
 }
 
 
 /* Function: al_register_bitmap_loader_f
  */
 bool al_register_bitmap_loader_f(const char *extension,
-   ALLEGRO_BITMAP *(*loader_f)(ALLEGRO_FILE *fp, int flags))
+   ALLEGRO_BITMAP *(*fs_loader)(ALLEGRO_FILE *fp, int flags))
 {
-   Handler *ent;
-
-   ASSERT(extension);
-
-   if (strlen(extension) + 1 >= MAX_EXTENSION) {
-      return false;
-   }
-
-   ent = find_handler(extension);
-   if (!loader_f) {
-       if (!ent || !ent->fs_loader) {
-         return false; /* Nothing to remove. */
-       }
-   }
-   else if (!ent) {
-       ent = add_iio_table_f(extension);
-   }
-
-   ent->fs_loader = loader_f;
-
-   return true;
+   REGISTER(fs_loader)
 }
 
 
 /* Function: al_register_bitmap_saver_f
  */
 bool al_register_bitmap_saver_f(const char *extension,
-   bool (*saver_f)(ALLEGRO_FILE *fp, ALLEGRO_BITMAP *bmp))
+   bool (*fs_saver)(ALLEGRO_FILE *fp, ALLEGRO_BITMAP *bmp))
 {
-   Handler *ent;
+   REGISTER(fs_saver)
+}
 
-   ASSERT(extension);
-   ASSERT(saver_f);
 
-   if (strlen(extension) + 1 >= MAX_EXTENSION) {
-      return false;
-   }
-
-   ent = find_handler(extension);
-   if (!saver_f) {
-       if (!ent || !ent->fs_saver) {
-         return false; /* Nothing to remove. */
-       }
-   }
-   else if (!ent) {
-       ent = add_iio_table_f(extension);
-   }
-
-   ent->fs_saver = saver_f;
-
-   return true;
+/* Function: al_register_bitmap_identifier
+ */
+bool al_register_bitmap_identifier(const char *extension,
+   bool (*identifier)(ALLEGRO_FILE *f))
+{
+   REGISTER(identifier)
 }
 
 
@@ -227,13 +195,17 @@ ALLEGRO_BITMAP *al_load_bitmap_flags(const char *filename, int flags)
 
    ext = strrchr(filename, '.');
    if (!ext) {
-      ALLEGRO_WARN("Bitmap %s has no extension - "
-         "not even trying to load it.\n", filename);
-      return NULL;
+      ext = al_identify_bitmap(filename);
+      if (!ext) {
+         ALLEGRO_WARN("Bitmap %s has no extension and filetype "
+            "identification failed - not even trying to load it.\n",
+            filename);
+         return NULL;
+      }
    }
 
-   h = find_handler(ext);
-   if (h) {
+   h = find_handler(ext, false);
+   if (h && h->loader) {
       ret = h->loader(filename, flags);
       if (!ret)
          ALLEGRO_WARN("Failed loading %s with %s handler.\n", filename,
@@ -260,8 +232,8 @@ bool al_save_bitmap(const char *filename, ALLEGRO_BITMAP *bitmap)
    if (!ext)
       return false;
 
-   h = find_handler(ext);
-   if (h)
+   h = find_handler(ext, false);
+   if (h && h->saver)
       return h->saver(filename, bitmap);
    else {
       ALLEGRO_WARN("No handler for image %s found\n", filename);
@@ -289,11 +261,15 @@ ALLEGRO_BITMAP *al_load_bitmap_f(ALLEGRO_FILE *fp, const char *ident)
 
 /* Function: al_load_bitmap_flags_f
  */
-ALLEGRO_BITMAP *al_load_bitmap_flags_f(ALLEGRO_FILE *fp, const char *ident,
-   int flags)
+ALLEGRO_BITMAP *al_load_bitmap_flags_f(ALLEGRO_FILE *fp,
+   const char *ident, int flags)
 {
-   Handler *h = find_handler(ident);
-   if (h)
+   Handler *h;
+   if (ident)
+      h = find_handler(ident, false);
+   else
+      h = find_handler_for_file(fp);
+   if (h && h->fs_loader)
       return h->fs_loader(fp, flags);
    else
       return NULL;
@@ -305,13 +281,38 @@ ALLEGRO_BITMAP *al_load_bitmap_flags_f(ALLEGRO_FILE *fp, const char *ident,
 bool al_save_bitmap_f(ALLEGRO_FILE *fp, const char *ident,
    ALLEGRO_BITMAP *bitmap)
 {
-   Handler *h = find_handler(ident);
-   if (h)
+   Handler *h = find_handler(ident, false);
+   if (h && h->fs_saver)
       return h->fs_saver(fp, bitmap);
    else {
       ALLEGRO_WARN("No handler for image %s found\n", ident);
       return false;
    }
+}
+
+
+/* Function: al_identify_bitmap_f
+ */
+char const *al_identify_bitmap_f(ALLEGRO_FILE *fp)
+{
+   Handler *h = find_handler_for_file(fp);
+   if (!h)
+      return NULL;
+   return h->extension;
+}
+
+
+/* Function: al_identify_bitmap
+ */
+char const *al_identify_bitmap(char const *filename)
+{
+   char const *ext;
+   ALLEGRO_FILE *fp = al_fopen(filename, "rb");
+   if (!fp)
+      return NULL;
+   ext = al_identify_bitmap_f(fp);
+   al_fclose(fp);
+   return ext;
 }
 
 

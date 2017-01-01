@@ -145,17 +145,14 @@ void _al_kcm_mixer_rejig_sample_matrix(ALLEGRO_MIXER *mixer,
    size_t src_chans;
    size_t i, j;
 
-   if (spl->matrix) {
-      al_free(spl->matrix);
-   }
-
    mat = _al_rechannel_matrix(spl->spl_data.chan_conf,
       mixer->ss.spl_data.chan_conf, spl->gain, spl->pan);
 
    dst_chans = al_get_channel_count(mixer->ss.spl_data.chan_conf);
    src_chans = al_get_channel_count(spl->spl_data.chan_conf);
 
-   spl->matrix = al_calloc(1, src_chans * dst_chans * sizeof(float));
+   if (!spl->matrix)
+      spl->matrix = al_calloc(1, src_chans * dst_chans * sizeof(float));
 
    for (i = 0; i < dst_chans; i++) {
       for (j = 0; j < src_chans; j++) {
@@ -178,14 +175,16 @@ static bool fix_looped_position(ALLEGRO_SAMPLE_INSTANCE *spl)
    /* Looping! Should be mostly self-explanatory */
    switch (spl->loop) {
       case ALLEGRO_PLAYMODE_LOOP:
-         if (spl->step > 0) {
-            while (spl->pos >= spl->loop_end) {
-               spl->pos -= (spl->loop_end - spl->loop_start);
+         if (spl->loop_end - spl->loop_start != 0) {
+            if (spl->step > 0) {
+               while (spl->pos >= spl->loop_end) {
+                  spl->pos -= (spl->loop_end - spl->loop_start);
+               }
             }
-         }
-         else if (spl->step < 0) {
-            while (spl->pos < spl->loop_start) {
-               spl->pos += (spl->loop_end - spl->loop_start);
+            else if (spl->step < 0) {
+               while (spl->pos < spl->loop_start) {
+                  spl->pos += (spl->loop_end - spl->loop_start);
+               }
             }
          }
          return true;
@@ -195,20 +194,22 @@ static bool fix_looped_position(ALLEGRO_SAMPLE_INSTANCE *spl)
           * check for the opposite direction if a loop occurred, otherwise
           * you could end up misplaced on small, high-step loops.
           */
-         if (spl->step >= 0) {
-         check_forward:
-            if (spl->pos >= spl->loop_end) {
-               spl->step = -spl->step;
-               spl->pos = spl->loop_end - (spl->pos - spl->loop_end) - 1;
-               goto check_backward;
+         if (spl->loop_end - spl->loop_start != 0) {
+            if (spl->step >= 0) {
+            check_forward:
+               if (spl->pos >= spl->loop_end) {
+                  spl->step = -spl->step;
+                  spl->pos = spl->loop_end - (spl->pos - spl->loop_end) - 1;
+                  goto check_backward;
+               }
             }
-         }
-         else {
-         check_backward:
-            if (spl->pos < spl->loop_start || spl->pos >= spl->loop_end) {
-               spl->step = -spl->step;
-               spl->pos = spl->loop_start + (spl->loop_start - spl->pos);
-               goto check_forward;
+            else {
+            check_backward:
+               if (spl->pos < spl->loop_start || spl->pos >= spl->loop_end) {
+                  spl->step = -spl->step;
+                  spl->pos = spl->loop_start + (spl->loop_start - spl->pos);
+                  goto check_forward;
+               }
             }
          }
          return true;
@@ -609,27 +610,24 @@ ALLEGRO_MIXER *al_create_mixer(unsigned int freq,
    ALLEGRO_AUDIO_DEPTH depth, ALLEGRO_CHANNEL_CONF chan_conf)
 {
    ALLEGRO_MIXER *mixer;
-   ALLEGRO_CONFIG *config;
    int default_mixer_quality = ALLEGRO_MIXER_QUALITY_LINEAR;
+   const char *p;
 
    /* XXX this is in the wrong place */
-   config = al_get_system_config();
-   if (config) {
-      const char *p;
-      p = al_get_config_value(config, "audio", "default_mixer_quality");
-      if (p && p[0] != '\0') {
-         if (!_al_stricmp(p, "point")) {
-            ALLEGRO_INFO("Point sampling\n");
-            default_mixer_quality = ALLEGRO_MIXER_QUALITY_POINT;
-         }
-         else if (!_al_stricmp(p, "linear")) {
-            ALLEGRO_INFO("Linear interpolation\n");
-            default_mixer_quality = ALLEGRO_MIXER_QUALITY_LINEAR;
-         }
-         else if (!_al_stricmp(p, "cubic")) {
-            ALLEGRO_INFO("Cubic interpolation\n");
-            default_mixer_quality = ALLEGRO_MIXER_QUALITY_CUBIC;
-         }
+   p = al_get_config_value(al_get_system_config(), "audio",
+      "default_mixer_quality");
+   if (p && p[0] != '\0') {
+      if (!_al_stricmp(p, "point")) {
+         ALLEGRO_INFO("Point sampling\n");
+         default_mixer_quality = ALLEGRO_MIXER_QUALITY_POINT;
+      }
+      else if (!_al_stricmp(p, "linear")) {
+         ALLEGRO_INFO("Linear interpolation\n");
+         default_mixer_quality = ALLEGRO_MIXER_QUALITY_LINEAR;
+      }
+      else if (!_al_stricmp(p, "cubic")) {
+         ALLEGRO_INFO("Cubic interpolation\n");
+         default_mixer_quality = ALLEGRO_MIXER_QUALITY_CUBIC;
       }
    }
 
@@ -669,7 +667,7 @@ ALLEGRO_MIXER *al_create_mixer(unsigned int freq,
 
    _al_vector_init(&mixer->streams, sizeof(ALLEGRO_SAMPLE_INSTANCE *));
 
-   _al_kcm_register_destructor(mixer, (void (*)(void *)) al_destroy_mixer);
+   mixer->dtor_item = _al_kcm_register_destructor("mixer", mixer, (void (*)(void *)) al_destroy_mixer);
 
    return mixer;
 }
@@ -680,7 +678,7 @@ ALLEGRO_MIXER *al_create_mixer(unsigned int freq,
 void al_destroy_mixer(ALLEGRO_MIXER *mixer)
 {
    if (mixer) {
-      _al_kcm_unregister_destructor(mixer);
+      _al_kcm_unregister_destructor(mixer->dtor_item);
       _al_kcm_destroy_sample(&mixer->ss, false);
    }
 }
@@ -803,6 +801,7 @@ bool al_attach_mixer_to_mixer(ALLEGRO_MIXER *stream, ALLEGRO_MIXER *mixer)
 {
    ASSERT(mixer);
    ASSERT(stream);
+   ASSERT(mixer != stream);
 
    if (mixer->ss.spl_data.frequency != stream->ss.spl_data.frequency) {
       _al_set_error(ALLEGRO_INVALID_OBJECT,

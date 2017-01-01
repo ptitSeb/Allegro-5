@@ -32,6 +32,8 @@
 #include <OpenGLES/ES1/glext.h>
 #include <OpenGLES/ES2/gl.h>
 #include <OpenGLES/ES2/glext.h>
+#include <OpenGLES/ES3/gl.h>
+#include <OpenGLES/ES3/glext.h>
 
 /* Apple defines OES versions for these - however the separated alpha ones
  * don't seem to work on the device and just crash.
@@ -39,6 +41,7 @@
 #define glBlendEquation glBlendEquationOES
 #define glBlendFuncSeparate glBlendFuncSeparateOES
 #define glBlendEquationSeparate glBlendEquationSeparateOES
+#define glRenderbufferStorageMultisampleEXT glRenderbufferStorageMultisampleAPPLE
 #ifdef GL_FUNC_ADD
 #undef GL_FUNC_ADD
 #undef GL_FUNC_SUBTRACT
@@ -59,12 +62,14 @@
 #endif
 
 #elif defined ALLEGRO_ANDROID || defined ALLEGRO_RASPBERRYPI || defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID
-#if ((defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID) && defined ALLEGRO_CFG_NO_GLES2) || !(defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID)
+
+#if ((defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID) && !defined(ALLEGRO_CFG_OPENGLES2)) || !(defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID)
+
 #include <GLES/gl.h>
 #include <GLES/glext.h>
 #endif
 
-#ifndef ALLEGRO_CFG_NO_GLES2
+#ifdef ALLEGRO_CFG_OPENGLES2
 #define GL_GLEXT_PROTOTYPES
 #include <GLES2/gl2.h>
 #undef GL_GLEXT_PROTOTYPES
@@ -78,15 +83,18 @@
 #define GL_RGBA8 GL_RGBA8_OES
 
 #ifndef ALLEGRO_RASPBERRYPI
-#ifdef ALLEGRO_CFG_NO_GLES2
+#ifndef ALLEGRO_CFG_OPENGLES2
 #define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING_OES
 #define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER_OES
+#define GL_RENDERBUFFER_EXT GL_RENDERBUFFER_OES
 #define glBlendEquation glBlendEquationOES
 #define glBlendFuncSeparate glBlendFuncSeparateOES
 #define glBlendEquationSeparate glBlendEquationSeparateOES
 #define glGenerateMipmapEXT glGenerateMipmapOES
 #define glBindFramebufferEXT glBindFramebufferOES
 #define glDeleteFramebuffersEXT glDeleteFramebuffersOES
+#define GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT24_OES
+#endif
 #else
 #define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING
 #define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER
@@ -97,18 +105,8 @@
 #define glBindFramebufferEXT glBindFramebuffer
 #define glDeleteFramebuffersEXT glDeleteFramebuffers
 #ifndef GLchar
-#define GLchar	char
+#define GLchar char
 #endif
-#endif
-#else
-#define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING
-#define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER
-#define glBlendEquation glBlendEquation
-#define glBlendFuncSeparate glBlendFuncSeparate
-#define glBlendEquationSeparate glBlendEquationSeparate
-#define glGenerateMipmapEXT glGenerateMipmap
-#define glBindFramebufferEXT glBindFramebuffer
-#define glDeleteFramebuffersEXT glDeleteFramebuffers
 #endif
 
 #else /* ALLEGRO_MACOSX */
@@ -127,6 +125,9 @@
 #include <EGL/eglext.h>
 #endif
 
+#include "allegro5/bitmap.h"
+#include "allegro5/display.h"
+#include "allegro5/shader.h"
 #include "allegro5/opengl/gl_ext.h"
 
 #ifdef ALLEGRO_WINDOWS
@@ -166,7 +167,7 @@
  *  Public OpenGL-related API
  */
 
-/* Enum: ALLEGRO_OPENGL_VARIANT
+/* ALLEGRO_OPENGL_VARIANT
  */
 typedef enum ALLEGRO_OPENGL_VARIANT {
    ALLEGRO_DESKTOP_OPENGL = 0,
@@ -184,6 +185,7 @@ AL_FUNC(bool,                  al_get_opengl_texture_size,       (ALLEGRO_BITMAP
                                                                   int *w, int *h));
 AL_FUNC(void,                  al_get_opengl_texture_position,   (ALLEGRO_BITMAP *bitmap,
                                                                   int *u, int *v));
+AL_FUNC(GLuint,                al_get_opengl_program_object,     (ALLEGRO_SHADER *shader));
 AL_FUNC(void,                  al_set_current_opengl_context,    (ALLEGRO_DISPLAY *display));
 AL_FUNC(int,                   al_get_opengl_variant,            (void));
 

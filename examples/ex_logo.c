@@ -336,6 +336,10 @@ static void render(void)
       }
       al_unlock_bitmap(fulllogo);
 
+      if (left == 640)
+         left = 0;
+      if (top == 480)
+         top = 0;
       if (right < left)
          right = left;
       if (bottom < top)
@@ -384,13 +388,16 @@ static void render(void)
    print_parameters();
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
    ALLEGRO_EVENT_QUEUE *queue;
    int redraw = 0, i;
    bool quit = false;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not initialise Allegro\n");
@@ -400,6 +407,7 @@ int main(void)
    al_init_image_addon();
    al_init_font_addon();
    al_init_ttf_addon();
+   init_platform_specific();
    srand(time(NULL));
 
    white = al_map_rgba_f(1, 1, 1, 1);
@@ -450,31 +458,41 @@ int main(void)
                editing = false;
             }
             else {
-               cursor = 0;
+               cursor = strlen(param_values[selection]);
                editing = true;
             }
          }
          else if (event.keyboard.keycode == ALLEGRO_KEY_UP) {
             if (selection > 0) {
                selection--;
-               cursor = 0;
+               cursor = strlen(param_values[selection]);
                editing = false;
             }
          }
          else if (event.keyboard.keycode == ALLEGRO_KEY_DOWN) {
             if (param_names[selection + 1]) {
                selection++;
-               cursor = 0;
+               cursor = strlen(param_values[selection]);
                editing = false;
             }
          }
          else {
             int c = event.keyboard.unichar;
             if (editing) {
-               if (c >= 32) {
+               if (event.keyboard.keycode == ALLEGRO_KEY_BACKSPACE) {
+                  if (cursor > 0) {
+                     ALLEGRO_USTR *u = al_ustr_new(param_values[selection]);
+                     if (al_ustr_prev(u, &cursor)) {
+                        al_ustr_remove_chr(u, cursor);
+                        strncpy(param_values[selection], al_cstr(u),
+                           sizeof param_values[selection]);
+                     }
+                     al_ustr_free(u);
+                  }
+               }
+               else if (c >= 32) {
                   ALLEGRO_USTR *u = al_ustr_new(param_values[selection]);
-                  al_ustr_set_chr(u, cursor, c);
-                  cursor++;
+                  cursor += al_ustr_set_chr(u, cursor, c);
                   al_ustr_set_chr(u, cursor, 0);
                   strncpy(param_values[selection], al_cstr(u),
                      sizeof param_values[selection]);

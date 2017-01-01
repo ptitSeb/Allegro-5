@@ -42,6 +42,7 @@ typedef struct ALLEGRO_DISPLAY_ODROID {
    uint32_t invisible_cursor;
    uint8_t cursor_data[10000]; // FIXME: max 50x50 cursor @ 32 bit
    int cursor_offset_x, cursor_offset_y;
+   int resize_count;
    Atom wm_delete_window_atom;
 } ALLEGRO_DISPLAY_ODROID;
 
@@ -54,6 +55,8 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_odroid_display_interface(void);
 void _al_odroid_get_screen_info(int *dx, int *dy, int *screen_width, int *screen_height);
 
 bool _al_evdev_set_mouse_range(int x1, int y1, int x2, int y2);
+
+void odroid_flip_display(ALLEGRO_DISPLAY *disp);
 
 ALLEGRO_MOUSE_DRIVER _al_mousedrv_linux_evdev;
 

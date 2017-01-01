@@ -6,17 +6,21 @@
 
 #include "common.c"
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_BITMAP *bmp;
    ALLEGRO_BITMAP *sprite;
    ALLEGRO_COLOR c1, c2, c3;
    bool rc;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Error initialising Allegro\n");
    }
    al_init_image_addon();
+   init_platform_specific();
 
    sprite = al_load_bitmap("data/cursor.tga");
    if (!sprite) {
@@ -34,6 +38,7 @@ int main(void)
    c2 = al_map_rgb(0, 255, 0);
    c3 = al_map_rgb(0, 255, 255);
 
+   al_clear_to_color(al_map_rgba(255, 0, 0, 128));
    al_draw_bitmap(sprite, 0, 0, 0);
    al_draw_tinted_bitmap(sprite, c1, 64, 0, ALLEGRO_FLIP_HORIZONTAL);
    al_draw_tinted_bitmap(sprite, c2, 0, 64, ALLEGRO_FLIP_VERTICAL);

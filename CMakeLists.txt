@@ -12,9 +12,16 @@
 #
 #-----------------------------------------------------------------------------#
 
-cmake_minimum_required(VERSION 2.6 FATAL_ERROR)
+# Set the project name.
+# We use C++ in a few cases.
+project(ALLEGRO C CXX)
+
+cmake_minimum_required(VERSION 2.8.5 FATAL_ERROR)
 if(COMMAND cmake_policy)
     cmake_policy(SET CMP0003 NEW)
+    if(POLICY CMP0026)
+        cmake_policy(SET CMP0026 OLD)
+    endif()
 endif(COMMAND cmake_policy)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -26,54 +33,58 @@ endif()
 # Note: This needs to be done before the project command
 set(CMAKE_CONFIGURATION_TYPES "${CMAKE_BUILD_TYPE}" CACHE INTERNAL "internal")
 
-option(WANT_ANDROID "Build for Android" OFF)
-option(WANT_ANDROID_LEGACY "Build for Android 4 (1.6)" OFF)
+if(ANDROID)
+    option(WANT_ANDROID_LEGACY "Build for Android 4 (1.6)" OFF)
+    set(ANDROID_TARGET "android-12" CACHE STRING "What Android target to compile for.")
+endif(ANDROID)
 option(WANT_GLES2 "Compile with GLES2 support" ON)
-if(WANT_ANDROID)
-    include(${CMAKE_SOURCE_DIR}/cmake/Toolchain-android.cmake)
-endif(WANT_ANDROID)
 option(WANT_PANDORA "Build for Pandora" OFF)
 if(WANT_PANDORA)
-    include(${CMAKE_SOURCE_DIR}/cmake/Toolchain-openpandora.cmake)
+    include(${PROJECT_SOURCE_DIR}/cmake/Toolchain-openpandora.cmake)
 endif(WANT_PANDORA)
 option(WANT_ODROID "Build for ODroid" OFF)
 if(WANT_ODROID)
-    include(${CMAKE_SOURCE_DIR}/cmake/Toolchain-odroid.cmake)
+    include(${PROJECT_SOURCE_DIR}/cmake/Toolchain-odroid.cmake)
 endif(WANT_ODROID)
 
-# Set the project name.
-# We use C++ in a few cases.
-project(ALLEGRO C CXX)
+option(WANT_GLES3 "Compile with GLES3 support" OFF)
+option(ALLEGRO_SDL "Build using the SDL backend (experimental)" OFF)
+option(WANT_STATIC_RUNTIME "Whether or not to link the C and C++ runtimes statically (currently only implemented for MSVC)" OFF)
 
-set(ALLEGRO_VERSION 5.1.8)
+set(ALLEGRO_VERSION 5.2.2)
 string(REGEX MATCH "^[0-9]+[.][0-9]+" ALLEGRO_SOVERSION ${ALLEGRO_VERSION})
 string(REPLACE "." "" ALLEGRO_DLL_SHORTVER ${ALLEGRO_SOVERSION})
 
 # Search in the `cmake' directory for additional CMake modules.
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # Search in `deps' directories for dependency files.
 file(GLOB deps_subdirs
-    "${CMAKE_SOURCE_DIR}/deps"
-    "${CMAKE_SOURCE_DIR}/deps/*"
-    "${CMAKE_BINARY_DIR}/deps"
-    "${CMAKE_BINARY_DIR}/deps/*"
+    "${PROJECT_SOURCE_DIR}/deps"
+    "${PROJECT_SOURCE_DIR}/deps/*"
+    "${PROJECT_BINARY_DIR}/deps"
+    "${PROJECT_BINARY_DIR}/deps/*"
     )
 foreach(subdir ${deps_subdirs})
     if(EXISTS "${subdir}/include" OR EXISTS "${subdir}/lib")
+        if(CMAKE_FIND_ROOT_PATH)
         message(STATUS "Adding ${subdir} to CMAKE_FIND_ROOT_PATH")
         list(APPEND CMAKE_FIND_ROOT_PATH "${subdir}")
+        else()
+            message(STATUS "Adding ${subdir} to CMAKE_PREFIX_PATH")
+            list(APPEND CMAKE_PREFIX_PATH "${subdir}")
+        endif()
     endif()
 endforeach(subdir)
 
 # Search for C header files in these directories.
 include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_BINARY_DIR}/include
     )
 
 # Put libraries into `lib'.
-set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
+set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
 # Lists of all the source files.
 include(FileList)
@@ -116,6 +127,7 @@ option(WANT_D3D9EX "Enable Direct3D 9Ex extensions (Vista)" off)
 option(WANT_OPENGL "Enable OpenGL graphics driver (Windows, X11, OS X))" on)
 option(WANT_SHADERS_GL "Build GLSL shader support (OpenGL)" on)
 option(WANT_SHADERS_D3D "Build HLSL shader support (Direct3D)" on)
+option(WANT_OPENGL_S3TC_LOCKING "Whether to support blocked locking of DXT1, DXT2, and DXT3 formats in OpenGL." off)
 
 #
 # Addons.
@@ -163,7 +175,7 @@ option(WANT_DOCS_PDF_PAPER "Whether PDF output is destined for paper" off)
 
 option(STRICT_WARN "Halt at warnings" off)
 option(WANT_MUDFLAP "Enable gcc mudflap (requires gcc 4.0+)" off)
-option(WANT_RELEASE_LOGGING "Enable logging even in release mode" off)
+option(WANT_RELEASE_LOGGING "Enable logging even in release mode" on)
 
 if(WANT_RELEASE_LOGGING)
     set(ALLEGRO_CFG_RELEASE_LOGGING 1)
@@ -178,7 +190,7 @@ if(NOT IPHONE)
 endif(NOT IPHONE)
 
 option(NO_FPU "No floating point unit" off)
-option(WANT_DLL_TLS "Force use of DllMain for TLS (Windows)" on)
+option(WANT_DLL_TLS "Force use of DllMain for TLS (Windows)" off)
 option(WANT_DEMO "Build demo programs" on)
 option(WANT_EXAMPLES "Build example programs" on)
 option(WANT_POPUP_EXAMPLES "Use popups instead of printf for fatal errors" on)
@@ -194,8 +206,22 @@ include(CheckCSourceCompiles)
 include(CheckCXXSourceCompiles)
 
 if(CMAKE_COMPILER_IS_GNUCC)
+   get_gcc_system_include_dirs("c" "${CMAKE_C_COMPILER}" "${CMAKE_C_FLAGS}" SYSTEM_INCLUDE_DIRS)
+   set(CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES ${CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES} ${SYSTEM_INCLUDE_DIRS})
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX)
+   get_gcc_system_include_dirs("c++" "${CMAKE_CXX_COMPILER}" "${CMAKE_CXX_FLAGS}" SYSTEM_INCLUDE_DIRS)
+   set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES} ${SYSTEM_INCLUDE_DIRS})
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCC)
     set(COMPILER_GCC 1)
-endif(CMAKE_COMPILER_IS_GNUCC)
+    set(COMPILER_GCC_OR_CLANG 1)
+endif()
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    set(COMPILER_GCC_OR_CLANG 1)
+endif()
 
 if(WIN32)
     if(WANT_DLL_TLS AND SHARED)
@@ -204,8 +230,6 @@ if(WIN32)
 endif(WIN32)
 
 if(MSVC)
-    # MSVC never needs DLL TLS and it just confuses
-    set(ALLEGRO_CFG_DLL_TLS 0)
     set(COMPILER_MSVC 1)
     set(ALLEGRO_MSVC 1)
 
@@ -243,7 +267,11 @@ if(MINGW)
     endif("$ENV{MINGDIR}" STREQUAL "")
 
     # Search in MINGDIR for headers and libraries.
-    set(CMAKE_PREFIX_PATH "${MINGDIR}")
+    if(CMAKE_FIND_ROOT_PATH)
+        list(APPEND CMAKE_FIND_ROOT_PATH "${MINGDIR}")
+    else()
+        list(APPEND CMAKE_PREFIX_PATH "${MINGDIR}")
+    endif()
 
     # Install to MINGDIR
     if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -253,7 +281,7 @@ if(MINGW)
     endif(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 
     # Check for a common problem (at the time of writing).
-    check_c_source_compiles("
+    run_c_compile_test("
         #include <windows.h>
         int main(void)
         {
@@ -294,7 +322,7 @@ if(IPHONE)
     set(ALLEGRO_UNIX 0)
     set(WANT_X11 off)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
-    set(CMAKE_EXE_LINKER_FLAGS "-framework CoreGraphics -framework QuartzCore -framework UIKit -framework Foundation -framework CoreFoundation")
+    set(CMAKE_EXE_LINKER_FLAGS "-framework CoreGraphics -framework QuartzCore -framework UIKit -framework Foundation -framework CoreFoundation -framework MobileCoreServices")
 endif(IPHONE)
 
 if(BORLAND)
@@ -319,6 +347,12 @@ if(ALLEGRO_ODROID)
     set(ALLEGRO_CFG_PTHREADS_TLS 1)
 endif(ALLEGRO_ODROID)
 
+if(ALLEGRO_SDL)
+   set(ALLEGRO_UNIX 0)
+   set(WANT_X11 off)
+   include(FindSDL2)
+endif(ALLEGRO_SDL)
+
 # Tell the compiler it can use SSE instructions on x86 architectures.
 # If compatibility with Pentium 2's and below is required then the user
 # should switch WANT_ALLOW_SSE off.
@@ -338,11 +372,11 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
 endif()
 
 if(ARCH_X86 AND WANT_ALLOW_SSE)
-    if(COMPILER_GCC)
-        message(STATUS "Allowing GCC to use SSE instructions")
+    if(COMPILER_GCC_OR_CLANG)
+        message(STATUS "Allowing GCC/Clang to use SSE instructions")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
-    endif(COMPILER_GCC)
+    endif(COMPILER_GCC_OR_CLANG)
 
     # Flags for other compilers should be added here.
 
@@ -361,32 +395,25 @@ endif()
 
 # Warnings.
 
-if(STRICT_WARN)
-    if(COMPILER_GCC)
-        set(WFLAGS "-W -Wall -Werror -Wpointer-arith")
-        set(WFLAGS_C_ONLY "-Wmissing-declarations -Wstrict-prototypes")
-        if(ALLEGRO_UNIX)
-            # Unfortunately we can't use this flag when magic main is used,
-            # the mangled_main won't have a forward declaration.
-            set(WFLAGS_C_ONLY "${WFLAGS_C_ONLY} -Wmissing-prototypes")
-        endif(ALLEGRO_UNIX)
-    endif(COMPILER_GCC)
-    if(COMPILER_MSVC)
-        set(WFLAGS "/W4 -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE")
-    endif(COMPILER_MSVC)
-else(STRICT_WARN)
-    if(COMPILER_GCC)
-        set(WFLAGS "-W -Wall")
-    endif(COMPILER_GCC)
-    if(COMPILER_MSVC)
-        set(WFLAGS "/W3 -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE")
-    endif(COMPILER_MSVC)
-endif(STRICT_WARN)
-
-if(WIN32 AND COMPILER_GCC)
-    # Helps to ensure the Windows port remains compatible with MSVC.
-    set(WFLAGS_C_ONLY "${WFLAGS_C_ONLY} -Wdeclaration-after-statement")
-endif(WIN32 AND COMPILER_GCC)
+if(COMPILER_GCC_OR_CLANG)
+    set(WFLAGS "-W -Wall -Wpointer-arith")
+    set(WFLAGS_C_ONLY "-Wmissing-declarations -Wstrict-prototypes")
+    if(ALLEGRO_UNIX)
+        # Unfortunately we can't use this flag when magic main is used,
+        # the mangled_main won't have a forward declaration.
+        set(WFLAGS_C_ONLY "${WFLAGS_C_ONLY} -Wmissing-prototypes")
+    endif(ALLEGRO_UNIX)
+    if(WIN32)
+        # Helps to ensure the Windows port remains compatible with MSVC.
+        set(WFLAGS_C_ONLY "${WFLAGS_C_ONLY} -Wdeclaration-after-statement")
+    endif(WIN32)
+    if(STRICT_WARN)
+        set(WFLAGS "${WFLAGS} -Werror")
+    endif()
+endif()
+if(COMPILER_MSVC)
+    set(WFLAGS "/W3 -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE")
+endif(COMPILER_MSVC)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${WFLAGS} ${WFLAGS_C_ONLY}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${WFLAGS}")
@@ -405,19 +432,22 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUGMODE=1 -DD3D_DEBUG_IN
 # Profiling.
 
 list(APPEND CMAKE_BUILD_CONFIGURATIONS Profile)
-if(COMPILER_GCC)
+if(COMPILER_GCC_OR_CLANG)
     set(CMAKE_C_FLAGS_PROFILE "-pg"
         CACHE STRING "profiling flags")
     set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_C_FLAGS_PROFILE}"
         CACHE STRING "profiling flags")
     set(CMAKE_EXE_LINKER_FLAGS_PROFILE "-pg"
         CACHE STRING "profiling flags")
+    set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "-pg"
+        CACHE STRING "profiling flags")
     mark_as_advanced(
         CMAKE_C_FLAGS_PROFILE
         CMAKE_CXX_FLAGS_PROFILE
         CMAKE_EXE_LINKER_FLAGS_PROFILE
+        CMAKE_SHARED_LINKER_FLAGS_PROFILE
         )
-endif(COMPILER_GCC)
+endif(COMPILER_GCC_OR_CLANG)
 
 #-----------------------------------------------------------------------------#
 #
@@ -459,6 +489,7 @@ check_include_files(machine/soundcard.h ALLEGRO_HAVE_MACHINE_SOUNDCARD_H)
 check_include_files(linux/soundcard.h ALLEGRO_HAVE_LINUX_SOUNDCARD_H)
 check_include_files(libkern/OSAtomic.h ALLEGRO_HAVE_OSATOMIC_H)
 check_include_files(sys/inotify.h ALLEGRO_HAVE_SYS_INOTIFY_H)
+check_include_files(sal.h ALLEGRO_HAVE_SAL_H)
 
 check_function_exists(getexecname ALLEGRO_HAVE_GETEXECNAME)
 check_function_exists(mkstemp ALLEGRO_HAVE_MKSTEMP)
@@ -468,10 +499,12 @@ check_function_exists(sched_yield ALLEGRO_HAVE_SCHED_YIELD)
 check_function_exists(sysconf ALLEGRO_HAVE_SYSCONF)
 check_function_exists(fseeko ALLEGRO_HAVE_FSEEKO)
 check_function_exists(ftello ALLEGRO_HAVE_FTELLO)
+check_function_exists(strerror_r ALLEGRO_HAVE_STRERROR_R)
+check_function_exists(strerror_s ALLEGRO_HAVE_STRERROR_S)
 
 check_type_size("_Bool" ALLEGRO_HAVE__BOOL)
 
-check_c_source_compiles("
+run_c_compile_test("
     #include <sys/procfs.h>
     int main(void) {
         struct prpsinfo psinfo;
@@ -481,7 +514,7 @@ check_c_source_compiles("
     ALLEGRO_HAVE_PROCFS_ARGCV
     )
 
-check_c_source_compiles("
+run_c_compile_test("
     #include <sys/procfs.h>
     #include <sys/ioctl.h>
     int main(void) {
@@ -492,7 +525,7 @@ check_c_source_compiles("
     ALLEGRO_HAVE_SV_PROCFS_H
     )
 
-check_c_source_compiles("
+run_c_compile_test("
     #include <stdarg.h>
     int main(void) {
         va_list a, b;
@@ -530,20 +563,47 @@ check_c_source_compiles("
 
 if(WANT_OPENGL)
     find_package(OpenGL)
+    if(ANDROID)
+        find_package(OpenGLES)
+        find_package(OpenGLES2)
+    endif(ANDROID)
 
     # on cmake 2.8.1 OpenGL ES is not found in the iphone case
+    # XXX incorporate IPHONE case into FindOpenGLES/2
     if(IPHONE)
-        set(OPENGL_LIBRARIES "-framework OpenGLES")
-        set(OPENGL_gl_LIBRARY "-framework OpenGLES")
-        set(OPENGL_glu_LIBRARY "")
+        set(OPENGLES_FOUND 1)
+        set(OPENGLES_LIBRARIES "-framework OpenGLES")
+        set(OPENGLES2_FOUND 1)
+        set(OPENGLES2_LIBRARIES "-framework OpenGLES")
     endif(IPHONE)
 
-    if(OPENGL_FOUND)
+    if(OPENGLES_FOUND)
         set(SUPPORT_OPENGL 1)
         set(ALLEGRO_CFG_OPENGL 1)
-    endif(OPENGL_FOUND)
+        set(ALLEGRO_CFG_OPENGLES 1)
+        set(OPENGL_LIBRARIES ${OPENGLES_LIBRARIES})
+        if(OPENGLES2_FOUND)
+            set(ALLEGRO_CFG_OPENGLES2 1)
+            if(WANT_GLES3)
+                set(ALLEGRO_CFG_OPENGLES3 1)
+            endif()
+            set(ALLEGRO_CFG_OPENGL_PROGRAMMABLE_PIPELINE 1)
+            list(APPEND OPENGL_LIBRARIES ${OPENGLES2_LIBRARIES})
+        endif()
+    elseif(OPENGL_FOUND)
+        set(SUPPORT_OPENGL 1)
+        set(ALLEGRO_CFG_OPENGL 1)
+        # We assume that the OpenGL library is not very old.
+        set(ALLEGRO_CFG_OPENGL_PROGRAMMABLE_PIPELINE 1)
+    endif()
 endif(WANT_OPENGL)
 
+if(WANT_OPENGL_S3TC_LOCKING)
+    set(ALLEGRO_CFG_OPENGL_S3TC_LOCKING 1)
+else()
+    message("S3TC locking disabled. You will not be able to load/save "
+            "pre-compressed textures with OpenGL.")
+endif()
 
 #
 # Unix-specific
@@ -592,6 +652,19 @@ if(SUPPORT_X11)
         message(FATAL_ERROR "X11 support requires Xcursor library.")
     endif(CAN_XCURSOR)
 
+    check_include_file("X11/extensions/XInput2.h" CAN_XINPUT2)
+    run_c_compile_test("
+        #include <X11/extensions/XInput2.h>
+        int main(void) { (void)XI_TouchBegin; return 0; }"
+        XINPUT2_COMPILES
+    )
+    if(CAN_XINPUT2 AND XINPUT2_COMPILES)
+        list(APPEND X11_LIBRARIES "Xi")
+        set(ALLEGRO_XWINDOWS_WITH_XINPUT2 1)
+    else()
+        message("XInput2 library version 2.2 or higher not found, disabling touch support.")
+    endif()
+
     if(WANT_X11_XF86VIDMODE)
         check_include_file("X11/extensions/xf86vmode.h" HAVE_XF86VIDMODE_H)
         check_library_exists(Xxf86vm XF86VidModeQueryExtension "" CAN_XF86VIDMODE)
@@ -636,7 +709,8 @@ endif(SUPPORT_X11)
 #
 
 if(WIN32)
-    find_package(DInput)
+    find_package(DirectX)
+
     if(DINPUT_FOUND)
         # At least some copies of dinput.h redefine some types multiple times.
         # We must add the directory as a system directory so that the compiler
@@ -647,8 +721,13 @@ if(WIN32)
             "Windows port requires DirectInput (not found).")
     endif(DINPUT_FOUND)
 
+    # Xinput support for xbox compatible controllers.
+    if(XINPUT_FOUND)
+        set(SUPPORT_XINPUT 1)
+        set(ALLEGRO_CFG_XINPUT 1)
+    endif(XINPUT_FOUND)
+
     if(WANT_D3D)
-        find_package(D3D9)
         if(D3D9_FOUND)
             set(SUPPORT_D3D 1)
             set(ALLEGRO_CFG_D3D 1)
@@ -656,10 +735,13 @@ if(WIN32)
     endif(WANT_D3D)
 
     if(SUPPORT_D3D)
-        find_package(D3DX9)
         if(D3DX9_FOUND)
             include_directories(BEFORE SYSTEM ${D3DX9_INCLUDE_DIR})
-        endif(D3DX9_FOUND)
+            set(ALLEGRO_CFG_D3DX9 1)
+        else()
+            message("D3DX9 not found. You will not be able to compress or "
+                    "decompress textures on the GPU.")
+        endif()
    endif(SUPPORT_D3D)
 
     if(WANT_D3D9EX AND SUPPORT_D3D)
@@ -674,15 +756,11 @@ endif(WIN32)
 #
 #-----------------------------------------------------------------------------#
 
-# On Windows, disable shared build if either D3D or OpenGL are not present,
-# because it would produce a incompatible DLL.
 if(WIN32 AND SHARED)
     if(NOT SUPPORT_D3D OR NOT SUPPORT_OPENGL)
-        message(
-            "Both D3D and OpenGL must be present for the SHARED build. "
-            "Disabling SHARED build.")
-        set(SHARED off)
-        set(BUILD_SHARED_LIBS off)
+        message("WARNING: "
+            "Both D3D and OpenGL should be present for the SHARED build "
+            " to ensure maximum DLL compatibility.")
     endif(NOT SUPPORT_D3D OR NOT SUPPORT_OPENGL)
 endif(WIN32 AND SHARED)
 
@@ -714,6 +792,7 @@ if(WIN32)
         list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_D3D_FILES})
         list(APPEND PLATFORM_LIBS ${D3D9_LIBRARIES})
     endif(SUPPORT_D3D)
+    
     list(APPEND PLATFORM_LIBS ${DINPUT_LIBRARIES})
     if(MINGW AND NOT SHARED)
         list(APPEND PLATFORM_LIBS stdc++)
@@ -768,7 +847,6 @@ endif()
 
 if(SUPPORT_D3D AND WANT_SHADERS_D3D AND D3DX9_FOUND)
     set(ALLEGRO_CFG_SHADER_HLSL 1)
-    list(APPEND PLATFORM_LIBS "${D3DX9_LIBRARY}")
 endif()
 
 # Header files that we need to install.
@@ -793,6 +871,11 @@ if(IPHONE)
         ${ALLEGRO_INCLUDE_ALLEGRO_IPHONE_FILES}
         )
 endif(IPHONE)
+if(SUPPORT_X11 AND NOT ALLEGRO_RASPBERRYPI)
+    list(APPEND ALLEGRO_PUBLIC_HEADERS
+        ${ALLEGRO_INCLUDE_ALLEGRO_X_FILES}
+        )
+endif(SUPPORT_X11 AND NOT ALLEGRO_RASPBERRYPI)
 if(ANDROID)
     list(APPEND ALLEGRO_PUBLIC_HEADERS ${ALLEGRO_INCLUDE_ALLEGRO_ANDROID_FILES})
 endif(ANDROID)
@@ -809,6 +892,12 @@ foreach(genfile ${ALLEGRO_INCLUDE_ALLEGRO_PLATFORM_FILES_GENERATED})
         )
 endforeach(genfile)
 
+if(ALLEGRO_SDL)
+    list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_SDL_FILES})
+    list(APPEND PLATFORM_LIBS ${SDL2_LIBRARIES} pthread dl m)
+    include_directories(${SDL2_INCLUDE_DIR})
+endif(ALLEGRO_SDL)
+
 set_our_header_properties(${ALLEGRO_PUBLIC_HEADERS})
 
 if(NOT WANT_MONOLITH)
@@ -817,13 +906,11 @@ if(NOT WANT_MONOLITH)
     # to get the DLL #defines right under Windows for creating DLL export
     # functions when it is defined or import DLL functions when it is not).
     add_our_library(allegro
+        Allegro-${ALLEGRO_SOVERSION}
         "${LIBRARY_SOURCES};${ALLEGRO_PUBLIC_HEADERS}"
         "${LIBRARY_CFLAGS} -DALLEGRO_SRC"
         "${PLATFORM_LIBS}"
         )
-
-    # Allegro 4 has taken "Allegro" as the name of the framework.
-    set_our_framework_properties(allegro Allegro-${ALLEGRO_SOVERSION})
 endif(NOT WANT_MONOLITH)
 
 # Addons and examples should link with this target.
@@ -854,12 +941,11 @@ if(WANT_MONOLITH)
 
     link_directories(${MONOLITH_LINK_DIRECTORIES})
     add_our_library(allegro_monolith
+        AllegroMonolith-${ALLEGRO_SOVERSION}
         "${MONOLITH_SOURCES};${ALLEGRO_PUBLIC_HEADERS}"
         "${LIBRARY_CFLAGS} -DALLEGRO_SRC ${MONOLITH_DEFINES}"
         "${PLATFORM_LIBS};${MONOLITH_LIBRARIES}"
         )
-
-    set_our_framework_properties(allegro_monolith AllegroMonolith-${ALLEGRO_SOVERSION})
 
     set(ALLEGRO_MONOLITH_LINK_WITH allegro_monolith)
 endif(WANT_MONOLITH)
@@ -877,8 +963,19 @@ endif(NO_FPU)
 # All relevant variables must be set before here.
 configure_file(
     include/allegro5/platform/alplatf.h.cmake
-    ${CMAKE_BINARY_DIR}/include/allegro5/platform/alplatf.h
+    ${PROJECT_BINARY_DIR}/include/allegro5/platform/alplatf.h
     )
+
+#-----------------------------------------------------------------------------#
+#
+#   Android
+#
+#-----------------------------------------------------------------------------#
+
+if(ANDROID)
+    include(AndroidApp)
+    add_subdirectory(android)
+endif(ANDROID)
 
 #-----------------------------------------------------------------------------#
 #

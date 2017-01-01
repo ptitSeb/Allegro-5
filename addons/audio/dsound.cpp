@@ -1,7 +1,13 @@
 /*
  * Based on DirectSound driver by KC/Milan
  */
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0501
+#endif
 
+#ifndef WINVER
+#define WINVER 0x0501
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -43,19 +49,10 @@ ALLEGRO_DEBUG_CHANNEL("audio-dsound")
    } u; \
    u.p = (ptr);
 
-typedef HRESULT (WINAPI *DIRECTSOUNDCREATE8PROC)(LPCGUID pcGuidDevice, LPDIRECTSOUND8 *ppDS8, LPUNKNOWN pUnkOuter);
-
-typedef HRESULT (WINAPI *DIRECTSOUNDCAPTURECREATE8PROC)(LPCGUID pcGuidDevice, LPDIRECTSOUNDCAPTURE8 *ppDS8, LPUNKNOWN pUnkOuter);
-
 /* DirectSound vars */
-static const char* _al_dsound_module_name = "dsound.dll";
-static void *_al_dsound_module = NULL;
-static DIRECTSOUNDCREATE8PROC _al_dsound_create = (DIRECTSOUNDCREATE8PROC)NULL;
-static DIRECTSOUNDCAPTURECREATE8PROC _al_dsound_capture_create = (DIRECTSOUNDCAPTURECREATE8PROC)NULL;
 static IDirectSound8 *device;
 static IDirectSoundCapture8 *capture_device; 
 static char ds_err_str[100];
-static int buffer_size_in_samples = 8192; // default
 static int buffer_size; // in bytes
 
 #define MIN_BUFFER_SIZE    1024
@@ -64,17 +61,14 @@ static int buffer_size; // in bytes
 
 static void dsound_set_buffer_size(int bits_per_sample)
 {
-   ALLEGRO_CONFIG *config = al_get_system_config();
-
-   if (config) {
-      const char *val = al_get_config_value(config,
-         "directsound", "buffer_size");
-      if (val && val[0] != '\0') {
-         int n = atoi(val);
-         if (n < MIN_BUFFER_SIZE)
-            n = MIN_BUFFER_SIZE;
-         buffer_size_in_samples = n;
-      }
+   int buffer_size_in_samples = 8192; // default
+   const char *val = al_get_config_value(al_get_system_config(),
+      "directsound", "buffer_size");
+   if (val && val[0] != '\0') {
+      int n = atoi(val);
+      if (n < MIN_BUFFER_SIZE)
+         n = MIN_BUFFER_SIZE;
+      buffer_size_in_samples = n;
    }
 
    buffer_size = buffer_size_in_samples * (bits_per_sample/8);
@@ -153,13 +147,14 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
    LPVOID ptr1, ptr2;
    DWORD block1_bytes, block2_bytes;
    unsigned char *data;
+   unsigned char *silence;
    HRESULT hr;
-
    (void)self;
 
-   unsigned char *silence = (unsigned char *)al_malloc(buffer_size);
-   int silence_value = _al_kcm_get_silence(voice->depth);
-   memset(silence, silence_value, buffer_size);
+   /* Make a buffer full of silence. */
+   silence = (unsigned char *)al_malloc(buffer_size);
+   samples = buffer_size / bytes_per_sample / ex_data->channels;
+   al_fill_silence(silence, samples, voice->depth, voice->chan_conf);
 
    /* Fill buffer */
    hr = ex_data->ds8_buffer->Lock(0, buffer_size,
@@ -168,7 +163,7 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
    if (!FAILED(hr)) {
       unsigned int sample_bytes;
       samples = buffer_size / bytes_per_sample / ex_data->channels;
-      data = (unsigned char *) _al_voice_update(voice, &samples);
+      data = (unsigned char *) _al_voice_update(voice, voice->mutex, &samples);
       sample_bytes = samples * bytes_per_sample * ex_data->channels;
       if (sample_bytes < block1_bytes)
          block1_bytes = sample_bytes;
@@ -213,7 +208,7 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
       }
 
       /* Generate the samples. */
-      data = (unsigned char *) _al_voice_update(voice, &samples);
+      data = (unsigned char *) _al_voice_update(voice, voice->mutex, &samples);
       if (data == NULL) {
          data = silence;
       }
@@ -251,31 +246,12 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
 static int _dsound_open()
 {
    HRESULT hr;
-
-   ALLEGRO_DEBUG("Loading DirectSound module\n");
-
-   /* load DirectSound module */
-   _al_dsound_module = _al_open_library(_al_dsound_module_name);
-   if (_al_dsound_module == NULL) {
-      ALLEGRO_ERROR("Failed to open '%s' library\n", _al_dsound_module_name);
-      return 1;
-   }
-
-   /* import DirectSound create proc */
-   _al_dsound_create = (DIRECTSOUNDCREATE8PROC)_al_import_symbol(_al_dsound_module, "DirectSoundCreate8");
-   if (_al_dsound_create == NULL) {
-      ALLEGRO_ERROR("DirectSoundCreate8 not in %s\n", _al_dsound_module_name);
-      _al_close_library(_al_dsound_module);
-      return 1;
-   }
-
    ALLEGRO_INFO("Starting DirectSound...\n");
 
    /* FIXME: Use default device until we have device enumeration */
-   hr = _al_dsound_create(NULL, &device, NULL);
+   hr = DirectSoundCreate8(NULL, &device, NULL);
    if (FAILED(hr)) {
       ALLEGRO_ERROR("DirectSoundCreate8 failed\n");
-      _al_close_library(_al_dsound_module);
       return 1;
    }
 
@@ -285,7 +261,6 @@ static int _dsound_open()
    hr = device->SetCooperativeLevel(GetForegroundWindow(), DSSCL_PRIORITY);
    if (FAILED(hr)) {
       ALLEGRO_ERROR("SetCooperativeLevel failed\n");
-      _al_close_library(_al_dsound_module);
       return 1;
    }
 
@@ -300,8 +275,6 @@ static void _dsound_close()
    ALLEGRO_DEBUG("Releasing device\n");
    device->Release();
    ALLEGRO_DEBUG("Released device\n");
-
-   _al_close_library(_al_dsound_module);
    ALLEGRO_INFO("DirectSound closed\n");
 }
 
@@ -745,8 +718,6 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
 {
    HRESULT hr;
 
-   ALLEGRO_ASSERT(_al_dsound_module);
-
    if (capture_device != NULL) {
       /* FIXME: It's wrong to assume only a single recording device, but since
                 there is no enumeration of devices, it doesn't matter for now. */
@@ -754,17 +725,10 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
       return 1;
    }
 
-   /* import DirectInput create proc */
-   _al_dsound_capture_create = (DIRECTSOUNDCAPTURECREATE8PROC)_al_import_symbol(_al_dsound_module, "DirectSoundCaptureCreate8");
-   if (_al_dsound_capture_create == NULL) {
-      ALLEGRO_ERROR("DirectSoundCaptureCreate8 not in %s\n", _al_dsound_module_name);
-      return 1;
-   }
-
    ALLEGRO_INFO("Creating default capture device.\n");
 
    /* FIXME: Use default device until we have device enumeration */
-   hr = _al_dsound_capture_create(NULL, &capture_device, NULL);
+   hr = DirectSoundCaptureCreate8(NULL, &capture_device, NULL);
    if (FAILED(hr)) {
       ALLEGRO_ERROR("DirectSoundCaptureCreate8 failed\n");
       return 1;
@@ -774,7 +738,6 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
    hr = device->SetCooperativeLevel(GetForegroundWindow(), DSSCL_PRIORITY);
    if (FAILED(hr)) {
       ALLEGRO_ERROR("SetCooperativeLevel failed\n");
-      _al_close_library(_al_dsound_module);
       return 1;
    }
 
@@ -791,9 +754,9 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
 
    memset(&extra->wave_fmt, 0, sizeof(extra->wave_fmt));
    extra->wave_fmt.wFormatTag = WAVE_FORMAT_PCM;
-   extra->wave_fmt.nChannels = al_get_channel_count(r->chan_conf);
+   extra->wave_fmt.nChannels = (WORD)al_get_channel_count(r->chan_conf);
    extra->wave_fmt.nSamplesPerSec = r->frequency;
-   extra->wave_fmt.wBitsPerSample = al_get_audio_depth_size(r->depth) * 8;
+   extra->wave_fmt.wBitsPerSample = (WORD)al_get_audio_depth_size(r->depth) * 8;
    extra->wave_fmt.nBlockAlign = extra->wave_fmt.nChannels * extra->wave_fmt.wBitsPerSample / 8;
    extra->wave_fmt.nAvgBytesPerSec = extra->wave_fmt.nSamplesPerSec * extra->wave_fmt.nBlockAlign;
    

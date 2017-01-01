@@ -2,9 +2,6 @@
 #cmakedefine ALLEGRO_MINGW32
 #cmakedefine ALLEGRO_UNIX
 #cmakedefine ALLEGRO_MSVC
-#cmakedefine ALLEGRO_CFG_D3D
-#cmakedefine ALLEGRO_CFG_D3D9EX
-#cmakedefine ALLEGRO_CFG_OPENGL
 #cmakedefine ALLEGRO_MACOSX
 #cmakedefine ALLEGRO_BCC32
 #cmakedefine ALLEGRO_IPHONE
@@ -17,17 +14,22 @@
 #cmakedefine ALLEGRO_CFG_PTHREADS_TLS
 #cmakedefine ALLEGRO_CFG_RELEASE_LOGGING
 
+#cmakedefine ALLEGRO_CFG_D3D
+#cmakedefine ALLEGRO_CFG_D3D9EX
+#cmakedefine ALLEGRO_CFG_D3DX9
+#cmakedefine ALLEGRO_CFG_XINPUT
+#cmakedefine ALLEGRO_CFG_OPENGL
+#cmakedefine ALLEGRO_CFG_OPENGLES
+#cmakedefine ALLEGRO_CFG_OPENGLES2
+#cmakedefine ALLEGRO_CFG_OPENGLES3
+#cmakedefine ALLEGRO_CFG_OPENGL_PROGRAMMABLE_PIPELINE
 #cmakedefine ALLEGRO_CFG_SHADER_GLSL
 #cmakedefine ALLEGRO_CFG_SHADER_HLSL
+#cmakedefine ALLEGRO_CFG_OPENGL_S3TC_LOCKING
 
-#cmakedefine ALLEGRO_CFG_OPENGLES
-#cmakedefine ALLEGRO_CFG_NO_GLES2
 #cmakedefine ALLEGRO_CFG_ANDROID_LEGACY
 
-#ifdef ALLEGRO_ANDROID
-#define ALLEGRO_CFG_ANDROID_APP_NAME ${ANDROID_APP_NAME}
-#define ALLEGRO_CFG_ANDROID_APP_NAME_SLASH "${ANDROID_APP_NAME_SLASH}"
-#endif
+#cmakedefine ALLEGRO_EXCLUDE_GLX
 
 /*---------------------------------------------------------------------------*/
 
@@ -51,6 +53,7 @@
 #cmakedefine ALLEGRO_HAVE_SYS_TYPES_H
 #cmakedefine ALLEGRO_HAVE_OSATOMIC_H
 #cmakedefine ALLEGRO_HAVE_SYS_INOTIFY_H
+#cmakedefine ALLEGRO_HAVE_SAL_H
 
 /* Define to 1 if the corresponding functions are available. */
 #cmakedefine ALLEGRO_HAVE_GETEXECNAME
@@ -59,8 +62,12 @@
 #cmakedefine ALLEGRO_HAVE_MPROTECT
 #cmakedefine ALLEGRO_HAVE_SCHED_YIELD
 #cmakedefine ALLEGRO_HAVE_SYSCONF
+#cmakedefine ALLEGRO_HAVE_SYSCTL
+
 #cmakedefine ALLEGRO_HAVE_FSEEKO
 #cmakedefine ALLEGRO_HAVE_FTELLO
+#cmakedefine ALLEGRO_HAVE_STRERROR_R
+#cmakedefine ALLEGRO_HAVE_STRERROR_S
 #cmakedefine ALLEGRO_HAVE_VA_COPY
 
 /* Define to 1 if procfs reveals argc and argv */
@@ -97,10 +104,16 @@
 /* Define if XIM extension is supported. */
 #cmakedefine ALLEGRO_XWINDOWS_WITH_XIM
 
+/* Define if XInput 2.2 X11 extension is supported. */
+#cmakedefine ALLEGRO_XWINDOWS_WITH_XINPUT2
+
 /*---------------------------------------------------------------------------*/
 
 /* Define if target platform is linux. */
 #cmakedefine ALLEGRO_LINUX
+
+/* Define if we are building with SDL backend. */
+#cmakedefine ALLEGRO_SDL
 
 /*---------------------------------------------------------------------------*/
 /* vi: set ft=c ts=3 sts=3 sw=3 et: */

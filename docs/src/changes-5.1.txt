@@ -1,7 +1,847 @@
 % Allegro changelog for 5.1.x series
 
 See `changes-5.0.txt` for changes in Allegro 5.0.x.  These lists
-serve as summaries; the full histories are in the Subversion repository.
+serve as summaries; the full histories are in the git repository.
+
+
+Changes from 5.1.13 to 5.1.13.1 (February 2016)
+============================================
+
+The main developers this time were: SiegeLord.
+
+Image addon:
+
+  - Fix regression in bitmap loading when compiled under MSVC.
+
+
+Changes from 5.1.12 to 5.1.13 (January 2016)
+============================================
+
+The main developers this time were: Julian Smythe, Elias Pschernig and
+Peter Hull.
+
+Graphics:
+
+  - Add `al_get_opengl_program_object` (SiegeLord).
+
+Input:
+
+  - Fix spurious triggering of the mouse grab key when it wasn't otherwise set
+    (SiegeLord).
+
+Android port:
+
+  - Avoid multiple HALT/RESUME events on Android (Max Savenkov).
+
+  - Implement `al_get_monitor_info` for Android (Reuben Bell).
+
+  - Fix Android crash on file access.
+
+  - Implement ALLEGRO_FULLSCREEN_WINDOW on Android.
+
+  - Fix crash if display is destroyed while the app is switched out.
+
+  - Add support for x86_64 Android.
+
+  - Add `al_android_set_apk_fs_interface`.
+
+Linux port:
+
+  - Allow using OpenGL ES in X11.
+
+  - Fix the initial display size not being correct sometimes (SiegeLord).
+
+  - Fix a race condition in the XInput joystick driver (Trent Gamblin).
+
+OSX port:
+
+  - Fix various memory leaks.
+
+  - Fix `al_set_window_title`.
+
+  - Fix a lot of decrepid and deprecated code.
+
+  - Fix single buffer flip display (SiegeLord).
+
+Windows port:
+
+  - Fix Windows UNC path handling.
+
+  - Fix clipboard nul-termination issues (Trent Gamblin).
+
+  - Set the window title immediately upon window creation (SiegeLord).
+
+Build system:
+
+  - Define CMAKE_FIND_ROOT_PATH for i686-w64-mingw32 cross compiler
+    (Martijn van Iersel).
+
+  - Allow building with older CMakes again (SiegeLord).
+
+  - Do not catche compile tests' failure (Bruce Pascoe).
+
+  - Add a way to statically link the runtime with MinGW (SiegeLord).
+
+  - Don't link the MSVC C runtime at all when requesting a static runtime and
+    building a static library (SiegeLord).
+
+Documentation:
+
+  - Add links to the source code of the definitions of the most API entries.
+
+  - Fix sidebar generation with modern Pandoc (Boris Carvajal).
+
+Python:
+
+  - Fix ordering issue for HAPTIC* structs.
+
+  - Fix missing ALLEGRO_PRIM_ATTR_NUM.
+
+Other:
+
+  - Add a 'none' debug level to turn off logging entirely in debug builds
+    (SiegeLord).
+
+  - Reconfigure logging after the configuration files are loaded (SiegeLord).
+
+  - Fix al_set_new_window_title() off-by-1 (Bruce Pascoe).
+
+  - Don't call al_get_time() before system is installed (SiegeLord).
+
+Audio addon:
+
+  - Add `al_get_default_voice` and `al_set_default_voice`.
+
+  - Flush the pulse audio stream rather than draining it, fixing some audio
+    breaks (SiegeLord).
+
+  - Fill audio stream fragments with silence in the audio addon rather than in
+    the acodec addon, fixing some garbage output (SiegeLord).
+
+  - Fix possible deadlock when destroying audio streams (SiegeLord).
+
+Acodec addon:
+
+  - Don't read past the audio chunk's end when streaming wav files (SiegeLord).
+
+  - Turn off allegro_acodec dynamic loading by default, fixing a common footgun (Bruce Pascoe).
+
+Image addon:
+
+  - An enormous amount of work supporting reading of esoteric (and not) BMP
+    format variants (palletted, GIMP-style, etc). New tests were added using the
+    manual bmp suites.
+
+Native dialog addon:
+
+  - Update code to work with modern OSX versions.
+
+  - Clean up menu handling on OSX.
+
+
+Changes from 5.1.11 to 5.1.12 (September 2015)
+==============================================
+
+The main developers this time were: Bruce Pascoe, Beoran, Elias Pschernig,
+SiegeLord, Trent Gamblin.
+
+Graphics:
+
+  - Add `al_set_blend_color` and `al_set_blender`, for additional blending modes.
+
+  - Add `ALLEGRO_MAXIMIZED` display flag.
+
+  - Add `al_reparent_bitmap`, `al_get_bitmap_x/y`. This allows changing the
+    offset of a sub-bitmap.
+
+  - Make `ALLEGRO_PIXEL_FORMAT_ANY_NO_ALPHA` actually pick a format without an
+    alpha channel.
+
+  - Add `al_premul_rgba` and `al_premul_rgba_f` convenience functions for
+    dealing with pre-multiplied alpha blending mode.
+
+Input:
+
+  - Fix key auto-repeat on modern X11 versions.
+
+  - Fix mis-detection of some joysticks on Android.
+
+Android port:
+
+  - Fix a crash when minimizing the app before Allegro has been initialized.
+
+iOS port:
+
+Linux port:
+
+  - Add `al_get_x_window_id` (Robert MacGregor)
+
+OSX port:
+
+  - Fix some deprecated API usage.
+
+Windows port:
+
+  - Fix a dangling pointer issue resulting in crashes when resizing on Windows
+    10.
+
+Build system:
+
+  - Build with multiple processors when using MSVC.
+
+  - Make XInput2/touch input optional on Linux.
+
+Documentation:
+
+  - Various documentation improvements.
+
+  - Fix some badly formatted flags (Rodolfo Lam).
+
+Other:
+
+   - Allow injecting Allegro events into event queses using
+     `al_emit_user_event` (Ryan Roden-Corrent)
+
+   - Add `al_set_new_window_title` and `al_get_new_window_title`.
+
+   - Add `al_get_clipboard_text`, `al_set_clipboard_text` and
+     `al_clipboard_has_text`.
+
+   - Add `al_resume_timer` (Ryan Roden-Corrent).
+
+   - Add `al_get_cpu_count` and `al_get_ram_size`.
+
+Audio addon:
+
+   - Add multiple voice support for the AQueue driver.
+
+   - Fix a bug when `al_restore_default_mixer` was called multiple times.
+
+Color addon:
+
+Font addon:
+
+  - Add `al_draw_glyph`, `al_get_glyph_width`, `al_get_glyph_dimensions` and
+    `al_get_glyph_advance`. These functions are useful when additional control
+    is needed when drawing text.
+
+  - Add `al_set_fallback_font`.
+
+Image addon:
+
+  - Add `al_register_bitmap_identifier`, `al_identify_bitmap` and
+    `al_identify_bitmap_f`. This allows detecting the bitmap type by looking at
+    the initial few bytes in the file rather than relying solely on the
+    extension.
+
+  - Allow saving bitmaps with uppercase extensions (Daniel).
+
+Native dialog addon:
+
+  - Fix crashes when creating menus with sub-menus (Todd Cope).
+
+Video addon:
+
+  - Allow using both Ffmpeg and Theora backends simultaneously.
+
+  - Reduce latency of `al_get_video_frame` for the Theora backend.
+
+  - Make the Theora backend send the `ALLEGRO_VIDEO_FRAME_SHOW` events.
+
+  - Rename `al_get_video_width/height` to `al_get_video_scaled_width/height`
+    which now return the aspect corrected size of the video frame.
+
+  - Rename `al_pause_video/al_is_video_paused` to `al_get/set_video_playing`.
+
+  - Add `ALLEGRO_EVENT_VIDEO_FINISHED` event.
+
+  - Remove `ALLEGRO_EVENT_VIDEO_FRAME_ALLOC` event.
+
+  - Remove `al_get_video_aspect_ratio`.
+
+Examples:
+
+  - New examples: ex_reparent, ex_inject_events, ex_clipboard, ex_cpu,
+    ex_timer_pause.
+
+
+Changes from 5.1.10 to 5.1.11 (June 2015)
+===========================================
+
+The main developers this time were: SiegeLord, Trent Gamblin.
+
+Input:
+
+  - Rename `al_get_haptic_active` to `al_is_haptic_active` for consistency.
+
+  - Rename `al_get_num_haptic_effects` to `al_get_max_haptic_effects`.
+
+  - Implement the missing `al_is_touch_input_haptic` function.
+
+  - Move the loops parameter of `al_upload_and_play_haptic_effect` after the id
+    to be consistent with `al_play_haptic_effect`.
+
+OSX port:
+
+  - Fix mouse warping in OSX.
+
+  - Add retina display support to OSX.
+
+Windows port:
+
+  - Fix querying display modes before creating a display.
+
+  - Make the Windows joystick implementation more fault tolerant.
+
+  - Initialize display callbacks when creating faux fullscreen (Edgar Reynaldo).
+
+Build system:
+
+  - Fix the conditional compilation of sal.h (Edgar Reynaldo).
+
+  - Don't look at WinSDK when we're not on MSVC, fixing MinGW builds when MSVC
+    is installed as well.
+
+  - Fix the static FLAC compile tests on Android and Windows.
+
+  - Make the OSX frameworks install in the proper location again.
+
+  - Add `WANT_STATIC_RUNTIME` CMake build option (currently MSVC-only).
+
+Documentation:
+
+  - Various documentation improvements.
+
+Other:
+
+  - Return a valid configuration from `al_get_system_config` before Allegro is
+    installed. This allows you to override the various configuration options
+    without using an on-disk `allegro5.cfg`.
+
+  - Compile in the logging support in release modes by default. Now logging can
+    be turned on in release builds without recompiling the program by editing
+    the system configuration.
+
+  - Detect file-overruns when saving configuration files (Bruce Pascoe).
+
+Color addon:
+
+  - When converting from YUV to RGB, clamp the returned values between 0 and 1.
+
+Video addon:
+
+  - Use an enum in place of magic numbers for `al_get_video_position` constants.
+
+
+
+Changes from 5.1.9 to 5.1.10 (May 2015)
+===========================================
+
+The main developers this time were: SiegeLord, Elias Pschernig, Trent Gamblin,
+Polybios.
+
+Input:
+
+  - Add `al_set_mouse_wheel_precision` and `al_get_mouse_wheel_precision`.
+
+Graphics:
+
+  - Added `al_transform_coordinates_3d`.
+
+  - Added `al_build_camera_transform`.
+
+  - Make the projection transform a bitmap local state. This removes
+	`al_set_projection_transform` and `al_get_projection_transform`, and replaces
+	them with `al_use_projection_transform` and
+	`al_get_current_projection_transform` with similar semantics to the regular
+	transforms.
+
+OSX port:
+
+  - Improved joystick axis layouts on Mac OS X, and added support for some
+    dpards (Max Savenkov).
+
+X11 port:
+
+  - Fix some memory leaks (ElectricSolstice).
+
+  - Make the XInput2 check more accurate (we require a specific version).
+
+Windows port:
+
+  - Remove taskbar hiding on Windows.
+
+  - Fix high precision mice on Windows.
+
+  - Fix some D3D conflicts with the OpenGL backend.
+
+  - Remove the prohibition of building OpenGL-only DLLs.
+
+  - Added LRESULT argument to WindowProc callback, fixing
+    `al_win_add_window_callback` for some event types (Aaron Bolyard).
+
+Android port:
+
+  - Fix some memory leaks.
+
+  - Make it possible to specify the Android target during building.
+
+iOS port:
+
+  - Add an XCode project to help build Allegro when CMake support fails.
+
+  - Restore the CMake support.
+
+  - Makes the examples run on the iOS simulator out of the box.
+
+  - Various small fixes (Trent Gamblin, jmasterx).
+
+  - Remove `al_iphone_get_last_shake_time` and a`l_iphone_get_battery_level`.
+
+  - Hack around iOS not creating mipmaps (jmasterx).
+
+  - If the supported orientation is `ALLEGRO_DISPLAY_ORIENTATION_UNKNOWN`,
+    default to supporting all orientations.
+
+  - Get Cosmic Protector to compile again.
+
+Build system:
+
+  - Revamp the detection of DirectX dependencies. Now it should work out of the
+    box for at least MSVC and mingw-w64.
+
+  - Fix GDIPlus finding script (pkrcel).
+
+  - Bump the minimum version of CMake to 2.8.5.
+
+Documentation:
+
+  - Many documentation improvements, as always (special thanks to Polybios).
+
+  - Make the PDF output prettier with better fonts and an up-to-date version
+    number.
+
+  - Make the Javascript search for online documentation support partial matches.
+
+  - Make [section] links work in HTML.
+
+  - Allow the docs to have more than 1024 entries (Allegro is getting huge!).
+
+Other:
+
+  - Make the test driver a little more resistant to failure.
+
+  - Various fixes to the experimental SDL backend.
+
+  - Update the CONTRIBUTORS.txt.
+
+Audio addon:
+
+  - Fix deadlock when destroying an audio stream soon after its creation.
+
+  - Add VOC file support (pkrcel).
+
+  - Disable processing of the XM zero-speed event.
+
+  - Disable processing of module loop points if `ALLEGRO_PLAYMODE_ONCE` is set.
+
+  - Fix a buffer overflow bug.
+
+Image addon:
+
+  - Fix loading of indexed + transparent PNGs with the libpng backend.
+
+Dialog addon:
+
+  - Fix some style issues with the Windows file dialog.
+
+  - Fix a bug with multiple filenames with the Windows file dialog.
+
+  - Change the semantics of the patterns in `al_create_native_file_dialog` to
+    support future expansion of the patterns to support both AND and OR style
+    filtering.
+
+  - Make the GTK file selection dialog look like it's from 2004 (as opposed to
+    mid-1990s).
+
+TTF addon:
+
+  - Fix some warnings.
+
+  - Make the page size dynamic, allowing for fonts with up to 8192x8192 glyphs
+    by default.
+
+Examples:
+
+  - New examples: ex_camera, ex_projection2.
+
+
+
+Changes from 5.1.8 to 5.1.9 (January 2015)
+===========================================
+
+The main developers this time were: Trent Gamblin, SiegeLord, Elias Pschernig.
+
+Core:
+
+  - Fix OSX backend on OSX 10.10 (lordnoriyuki).
+
+  - Simplify how sub-bitmaps interact with their parent bitmaps. You can now
+    destroy a sub-bitmap at any time (not only before the parent is destroyed).
+    Additionally, when the parent is converted using `al_convert_bitmap`, all
+    the sub-bitmaps are also automatically converted.
+
+  - Switch to using unicode Win32 (e.g. this fixes using `al_set_window_title`
+    with unicode strings).
+
+  - Add some Linux WM hints so make Allegro windows work more smoothly
+    (especially with Unity).
+
+Filesystem:
+
+  - Add `al_fprintf` (DanielH and Tobias Scheuer).
+
+  - Add `al_for_each_fs_entry`, a convenience function that helps enumerating
+    the contents of a directory more easily using a callback function (Beoran).
+
+  - Fix for `al_get_standard_path` with Unicode (vkensou).
+
+Input:
+
+  - Add X11 touch driver (Ryan Gumbs).
+
+  - Emulate mouse pressure for backends that don't support pressure.
+
+  - Added Windows haptics driver, XInput joystick driver (Beoran).
+
+  - Fix OSX joystick deinitialization.
+
+Graphics:
+
+  - Add block compression pixel formats
+	  (ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1/DXT3/DXT5) for compressed video
+	  bitmaps. This includes an API to fetch compressed block size
+	  (`al_get_pixel_block_width/height/size`) as well as API to load and unload
+	  compressed bitmap data without paying a runtime compression cost
+	  (`al_lock_bitmap_blocked`). Unfortunately, due to patent concerns this last
+	  feature is disabled for OpenGL (if you thinks those concerns don't apply to
+	  you, you can enable it by passing `-DWANT_OPENGL_S3TC_LOCKING=1` to cmake).
+
+  - Make real fullscreen modes work on OS X again. May not be perfect still.
+    (thanks to SDL).
+
+Shaders:
+
+  - Don't clobber the 0'th texture unit in OpenGL and Direct3D. This simplifies
+    working with shaders.
+
+Android port:
+
+  - Bump minimum Android API level from 10 to 12 (aka version 3.1).
+
+  - Add controller support to the Android port. An accelerometer 'joystick'
+	  is still the first joystick. Supports two analog sticks and 10 buttons (A B
+	  X Y L1 R1 DPAD_L DPAD_R DPAD_U DPAD_D). Supports hotplugging and
+	  theoretically multiple joysticks (needs testing).
+
+  - Set correct orientation at startup on Android (thanks to Aikei_c).
+
+Build system:
+
+  - Various CMake fixes.
+
+Other:
+
+  - Add Travis and AppVeyor continuous integration support.
+
+  - Fix a lot of memory leaks.
+
+  - Many documentation improvements.
+
+Audio addon:
+
+  - Disallow attaching a mixer to itself.
+
+  - Fix uni- and bi-directional looping of zero-length samples.
+
+  - Fix/avoid all sound examples freezing on OSX with the aqueue driver.
+
+Image addon:
+
+  - Add functionality to load Direct Draw Surface files (.dds). Only
+    compressed pixel formats are supported (DXT1, DXT3 and DXT5).
+
+Dialog addon:
+
+  - Fix native file dialog default paths on Windows (Edgar Reynaldo).
+
+  - Fix unintended behaviour in `al_set_menu_item_flags` (Malcolm Harrow).
+
+  - Fix some bugs with native menus in OSX.
+
+Video addon:
+
+  - Fix for now undefined AVCODEC_MAX_AUDIO_FRAME_SIZE (Dennis Busch).
+
+TTF addon:
+
+  - Fix a crashing bug in the TTF addon.
+
+  - Make `al_load_ttf_font_stretch` return NULL if invalid width/height are
+    passed.
+
+Font addon:
+
+  - Add multi line text output for the font addon (`al_draw_multiline_text`,
+    `al_draw_multiline_textf` and `al_draw_multiline_ustr`).
+
+Primitives addon:
+
+  - Fix some sharp-angle polyline drawing bugs.
+
+Examples:
+
+  - New examples: ex_compressed, ex_font_multiline.
+
+  - ex_dir: demonstrate `al_for_each_fs_entry`.
+
+  - ex_haptic2: demonstrate hotplugging.
+
+
+
+Changes from 5.1.7 to 5.1.8 (January 2014)
+==========================================
+
+The main developers this time were: Beoran, SiegeLord, Trent Gamblin,
+Markus Henschel, Peter Wang.
+
+Core:
+
+  - Allow MSVC to use DLL TLS but disable DLL TLS by default.
+
+  - Do not include windows.h via allegro.h.
+
+  - Fix some memory leaks on X11.
+
+Graphics:
+
+  - Spell ALLEGRO_DST_COLOR, ALLEGRO_INVERSE_DST_COLOR with "DEST"
+    (with compatibility defines).
+
+  - Fix bug which meant ALLEGRO_INVERSE_SRC_COLOR and
+    ALLEGRO_INVERSE_DEST_COLOR never actually worked on D3D.
+
+  - Fix horizontal and vertical shears which were not composing with
+    translations correctly.
+
+  - Optimise al_restore_state if saved target display/bitmap are unchanged.
+
+  - Fix _al_display_settings_sorter ordering of indexes when scores are equal.
+
+  - Use a minimum 16x16 texture workaround even on desktop OpenGL.
+
+  - Propagate errors up OpenGL lock bitmap implementations.
+
+  - Use proxy bitmap when locking writable backbuffer regions on GLES.
+
+  - Clean up FBO creation during bitmap locking.
+
+  - Move the half-pixel shift in D3D into the projection matrix.
+    Use the texture dimensions to compute the half-pixel shift.
+
+  - Fix al_get_d3d_texture_size returning zeros.
+
+  - Remove ALLEGRO_FORCE_LOCKING flag.
+
+  - Setup GL viewport and projection in al_acknowledge_resize on Android.
+
+  - Improve implementation of display options on Android: use the same display
+    setting scoring code as other ports; handle SUGGEST display options
+    properly; map ALLEGRO_COLOR_SIZE to EGL_BUFFER_SIZE attributes.
+
+Filesystem:
+
+  - Add al_ferror and al_ferror.  Initial patch by Tobias Scheuer.
+
+  - Make al_fclose have a return value.
+
+  - Check al_fclose return value in saving routines.
+
+  - Make al_fopen_fd not leak a FILE handle in a failure path.
+
+  - Make al_make_temp_file allocate temporary buffer to match the template.
+
+  - android: Interpret the path to APK asset as AssetManager doesn't.
+
+  - android: Correctly return -1 for APK asset file size if it can't be
+    determined.  A side-effect is that FreeType (via the TTF addon) can now
+    load TTFs stored compressed in APK assets.
+
+  - android: Support ungetc on APK file streams.
+
+  - android: Fix EOF handling in AllegroInputStream.
+
+Input:
+
+  - Initial haptics API, only implemented on Linux to begin with.
+
+  - Use Linux input API for joystick driver instead of deprecated joystick API.
+
+  - Use Linux joystick driver on Android if OUYA model detected
+    (Jonathan Lilliemarck).
+
+  - Use thread for hotplugging joysticks on Linux instead of timerfd
+    (due to Android).
+
+  - Report unichar in KEY_CHAR events on Android. (Todd Cope)
+
+  - Added some Android gaming key codes.
+
+  - iOS touch coordinates need to be multiplied by contentScaleFactor.
+
+  - Android touch input id 0 was incorrectly treated as invalid.
+    (Max Savenkov)
+
+Shaders:
+
+  - Automatically call OnLostDevice and OnResetDevice on HLSL shaders.
+
+  - Remove #version specifier from all shaders.
+
+Audio addon:
+
+  - Remove generic audio event source and AudioQueue events.
+
+  - Don't queue silent fragments at start of new audio streams.
+
+  - Make stream_read return correct number of filled samples when no data is
+    available (zero).
+
+  - A DirectSound voice could not be restarted once it has been stopped.
+
+  - Fix crash when attaching empty stream to dsound voice.
+
+  - Reset buffer position in stop instead of play in dsound voice.
+
+  - Fix calculation of current sample position in dsound voice.
+
+ -  Reset audio stream when al_set_audio_stream_playing to false for voice and
+    mixer cases, and make all fragments available for refill.
+
+  - Emit stream fragment events when a stream is started.
+
+  - Remove unnecessary reallocation of the channel matrix.
+
+  - Add al_fill_silence.
+
+  - Add al_get_audio_stream_played_samples.
+
+  - Fix deadlock in Pulseaudio driver.  Reported by Bluebird.
+
+  - Let al_set_sample_instance_playing work for unattached instances
+    and sample instances with no data set.  Reported by Bluebird.
+
+  - Enable the use of the unpatched DirectX SDK to build.
+
+Audio codec addon:
+
+  - Fix looping in Ogg Vorbis stream. (Todd Cope)
+
+  - Seeking in wavs would always have returned success.
+
+Image addon:
+
+  - Fix many problems in Android native image loader, including:
+    supporting ALLEGRO_NO_PREMULTIPLIED_ALPHA, respecting the new bitmap
+    format, working for non-APK assets, not crashing on failure.
+
+Native dialogs addon:
+
+  - Change native menu ids from int to uint16_t due to limitation with
+    Windows. (Matthew Leverton)
+
+Primitives addon:
+
+  - Rename the primitives buffer flags.
+
+  - Simplify the prim buffer hints.
+
+  - Simplify the al_create_vertex_buffer API.
+
+  - Actually implement uninitialized vertex buffers.
+
+  - Add indexed buffer API.
+
+  - Polylines with ALLEGRO_LINE_CAP_CLOSED cap style did not draw correctly
+    with thickness == 0.
+
+  - Take into account the projection matrix when computing the scale of the
+    high level primitives.
+
+  - Replace enum arguments for al_draw_polyline and al_draw_polygon with
+    integers to reduce chance of ABI issues.
+
+TTF addon:
+
+  - Fix a bug where some glyphs would be blank.
+
+  - Allow glyph allocation to fail without crashing.
+
+Android port:
+
+  - Separate Allegro library Java code from the original example project for
+    Android (Jonathan Lilliemarck).
+
+  - Build Allegro library as a JAR.
+
+  - Rename Java package to org.liballeg.android.
+
+  - Change how the application shared library is specified.  Override the
+    AllegroActivity constructor instead of specifying in AndroidManifest.xml.
+
+  - Add a method to tell if the user exited main in the Android Java code.
+
+  - Add a fix for the case of launching another activity from your game on
+    Android and then returning to the game after it finishes.
+
+  - Refactoring and clean up.
+
+iOS port:
+
+  - Remove al_iphone_get/set_screen_scale as not really needed and confusing.
+
+Build system:
+
+  - Integrate Android port into build system, including building and launching
+    examples for debugging.
+
+  - Detect OpenGLES/2 libraries on Android.
+
+  - Let clang use same options as gcc in build system.
+
+Python:
+
+  - Made the C-parser used in the Python API generator understand more type
+    constructs. (Elias Pschernig)
+
+Examples:
+
+  - Make demos and most examples run (somewhat) on Android.
+
+  - Add touch input support to various examples.
+
+  - New examples: ex_file, ex_haptic, ex_haptic2, ex_touch_input.
+
+  - ex_prim: Demonstrate indexed buffers.
+
+Other:
+
+  - More more minor bug fixes and changes.
+
+  - Documentation updates.
+
+  - Syntax highlight the C source examples and prototypes in the documentation.
+
 
 
 Changes from 5.1.6 to 5.1.7 (May 2013)

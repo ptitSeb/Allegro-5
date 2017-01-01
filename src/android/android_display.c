@@ -1,6 +1,6 @@
-/*         ______   ___    ___ 
+/*         ______   ___    ___
  *        /\  _  \ /\_ \  /\_ \
- *        \ \ \L\ \\//\ \ \//\ \      __     __   _ __   ___ 
+ *        \ \ \L\ \\//\ \ \//\ \      __     __   _ __   ___
  *         \ \  __ \ \ \ \  \ \ \   /'__`\ /'_ `\/\`'__\/ __`\
  *          \ \ \/\ \ \_\ \_ \_\ \_/\  __//\ \L\ \ \ \//\ \L\ \
  *           \ \_\ \_\/\____\/\____\ \____\ \____ \ \_\\ \____/
@@ -15,49 +15,41 @@
  */
 
 #include "allegro5/allegro.h"
-#include "allegro5/platform/aintandroid.h"
-#include "allegro5/platform/alandroid.h"
+#include "allegro5/allegro_opengl.h"
+#include "allegro5/internal/aintern_android.h"
 #include "allegro5/internal/aintern_display.h"
 #include "allegro5/internal/aintern_events.h"
-#include "allegro5/internal/aintern_android.h"
-#include "allegro5/internal/aintern_shader.h"
-
-#include <allegro5/allegro_opengl.h>
 #include "allegro5/internal/aintern_opengl.h"
+#include "allegro5/internal/aintern_shader.h"
+#include "allegro5/internal/aintern_pixels.h"
 
 #include "EGL/egl.h"
-
-/* Locking the screen causes a pause (good), then we resize (bad)
- * 
- * something isn't handling some onConfigChange events
- * 
- */
 
 ALLEGRO_DEBUG_CHANNEL("display")
 
 static ALLEGRO_DISPLAY_INTERFACE *vt;
 static ALLEGRO_EXTRA_DISPLAY_SETTINGS main_thread_display_settings;
 
-static void _al_android_update_visuals(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d);
+static int select_best_visual_and_update(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d);
 static void android_set_display_option(ALLEGRO_DISPLAY *d, int o, int v);
 static void _al_android_resize_display(ALLEGRO_DISPLAY_ANDROID *d, int width, int height);
 static bool _al_android_init_display(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *display);
 void _al_android_clear_current(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d);
 void  _al_android_make_current(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d);
-void _al_android_clear_current(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d);
 
 JNI_FUNC(void, AllegroSurface, nativeOnCreate, (JNIEnv *env, jobject obj))
 {
    ALLEGRO_DEBUG("nativeOnCreate");
    (void)env;
    (void)obj;
-   
+
    ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
    ASSERT(system != NULL);
-   
+
    ALLEGRO_DEBUG("AllegroSurface_nativeOnCreate");
-   
-   ALLEGRO_DISPLAY_ANDROID *d = *(ALLEGRO_DISPLAY_ANDROID**)_al_vector_ref(&system->displays, 0);
+
+   ALLEGRO_DISPLAY_ANDROID **dptr = _al_vector_ref(&system->displays, 0);
+   ALLEGRO_DISPLAY_ANDROID *d = *dptr;
    ASSERT(d != NULL);
 
    d->recreate = true;
@@ -66,13 +58,13 @@ JNI_FUNC(void, AllegroSurface, nativeOnCreate, (JNIEnv *env, jobject obj))
 JNI_FUNC(bool, AllegroSurface, nativeOnDestroy, (JNIEnv *env, jobject obj))
 {
    ALLEGRO_SYSTEM *sys = (void *)al_get_system_driver();
-   ASSERT(system != NULL);
+   ASSERT(sys != NULL);
 
-   ALLEGRO_DISPLAY_ANDROID *display = *(ALLEGRO_DISPLAY_ANDROID**)_al_vector_ref(&sys->displays, 0);
+   ALLEGRO_DISPLAY_ANDROID **dptr = _al_vector_ref(&sys->displays, 0);
+   ALLEGRO_DISPLAY_ANDROID *display = *dptr;
    ASSERT(display != NULL);
 
    ALLEGRO_DISPLAY *d = (ALLEGRO_DISPLAY *)display;
-   ALLEGRO_EVENT event;
 
    ALLEGRO_DEBUG("AllegroSurface_nativeOnDestroy");
    (void)obj;
@@ -84,21 +76,22 @@ JNI_FUNC(bool, AllegroSurface, nativeOnDestroy, (JNIEnv *env, jobject obj))
    }
 
    display->created = false;
-   
+
    if (display->is_destroy_display) {
       return true;
    }
 
    ALLEGRO_DEBUG("locking display event source: %p %p", d, &d->es);
- 
+
    _al_event_source_lock(&d->es);
-   
-   if(_al_event_source_needs_to_generate_event(&d->es)) {
+
+   if (_al_event_source_needs_to_generate_event(&d->es)) {
+      ALLEGRO_EVENT event;
       event.display.type = ALLEGRO_EVENT_DISPLAY_HALT_DRAWING;
       event.display.timestamp = al_current_time();
       _al_event_source_emit_event(&d->es, &event);
    }
-   
+
    ALLEGRO_DEBUG("unlocking display event source");
    _al_event_source_unlock(&d->es);
 
@@ -108,41 +101,40 @@ JNI_FUNC(bool, AllegroSurface, nativeOnDestroy, (JNIEnv *env, jobject obj))
    al_unlock_mutex(display->mutex);
 
    ALLEGRO_DEBUG("AllegroSurface_nativeOnDestroy end");
-   
+
    return true;
 }
 
-// FIXME: need to loop over the display list looking for the right surface object in the following jni callbacks
-JNI_FUNC(void, AllegroSurface, nativeOnChange, (JNIEnv *env, jobject obj, jint format, jint width, jint height))
+// FIXME: need to loop over the display list looking for the right surface
+// object in the following jni callbacks
+JNI_FUNC(void, AllegroSurface, nativeOnChange, (JNIEnv *env, jobject obj,
+   jint format, jint width, jint height))
 {
-   ALLEGRO_EVENT event;
-
-   (void)env;
-   (void)obj;
-   (void)format;
-
-   ALLEGRO_DEBUG("on change!");
-   ALLEGRO_DEBUG("sys: %p", system);
-   
    ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
    ASSERT(system != NULL);
-   ALLEGRO_DISPLAY_ANDROID *d = *(ALLEGRO_DISPLAY_ANDROID**)_al_vector_ref(&system->displays, 0);
+
+   ALLEGRO_DISPLAY_ANDROID **dptr = _al_vector_ref(&system->displays, 0);
+   ALLEGRO_DISPLAY_ANDROID *d = *dptr;
    ALLEGRO_DISPLAY *display = (ALLEGRO_DISPLAY*)d;
    ASSERT(display != NULL);
+
+   ALLEGRO_DEBUG("on change %dx%d!", width, height);
+   (void)format;
 
    if (!d->first_run && !d->recreate) {
       _al_android_resize_display(d, width, height);
       return;
    }
-   
+
    al_lock_mutex(d->mutex);
-  
+
    if (d->first_run || d->recreate) {
       d->surface_object = (*env)->NewGlobalRef(env, obj);
+      if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
+         display->w = width;
+         display->h = height;
+      }
    }
-
-   display->w = width;
-   display->h = height;
 
    bool ret = _al_android_init_display(env, d);
    if (!ret && d->first_run) {
@@ -156,18 +148,19 @@ JNI_FUNC(void, AllegroSurface, nativeOnChange, (JNIEnv *env, jobject obj, jint f
    d->created = true;
    d->recreate = false;
    d->resumed = false;
-   
+
    if (!d->first_run) {
       ALLEGRO_DEBUG("locking display event source: %p", d);
       _al_event_source_lock(&display->es);
-   
+
       ALLEGRO_DEBUG("check generate event");
       if (_al_event_source_needs_to_generate_event(&display->es)) {
+         ALLEGRO_EVENT event;
          event.display.type = ALLEGRO_EVENT_DISPLAY_RESUME_DRAWING;
          event.display.timestamp = al_current_time();
          _al_event_source_emit_event(&display->es, &event);
       }
-      
+
       ALLEGRO_DEBUG("unlocking display event source");
       _al_event_source_unlock(&display->es);
    }
@@ -185,93 +178,51 @@ JNI_FUNC(void, AllegroSurface, nativeOnChange, (JNIEnv *env, jobject obj, jint f
    }
 
    al_unlock_mutex(d->mutex);
-}
 
-JNI_FUNC(void, AllegroSurface, nativeOnKeyDown, (JNIEnv *env, jobject obj, jint scancode))
-{
-   (void)env; (void)obj;
-   
-   ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
-   ASSERT(system != NULL);
-   
-   ALLEGRO_DISPLAY *display = *(ALLEGRO_DISPLAY**)_al_vector_ref(&system->displays, 0);
-   ASSERT(display != NULL);
-   
-   _al_android_keyboard_handle_event(display, scancode, ALLEGRO_EVENT_KEY_DOWN);
-}
-
-JNI_FUNC(void, AllegroSurface, nativeOnKeyUp, (JNIEnv *env, jobject obj, jint scancode))
-{
-   (void)env; (void)obj;
-   
-   ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
-   ASSERT(system != NULL);
-   
-   ALLEGRO_DISPLAY *display = *(ALLEGRO_DISPLAY**)_al_vector_ref(&system->displays, 0);
-   ASSERT(display != NULL);
-
-   _al_android_keyboard_handle_event(display, scancode, ALLEGRO_EVENT_KEY_UP);
-}
-
-JNI_FUNC(void, AllegroSurface, nativeOnKeyChar, (JNIEnv *env, jobject obj, jint scancode))
-{
-   (void)env; (void)obj;
-   
-   ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
-   ASSERT(system != NULL);
-   
-   ALLEGRO_DISPLAY *display = *(ALLEGRO_DISPLAY**)_al_vector_ref(&system->displays, 0);
-   ASSERT(display != NULL);
-
-   _al_android_keyboard_handle_event(display, scancode, ALLEGRO_EVENT_KEY_CHAR);
-}
-
-JNI_FUNC(void, AllegroSurface, nativeOnTouch, (JNIEnv *env, jobject obj, jint id, jint action, jfloat x, jfloat y, jboolean primary))
-{
-   (void)env; (void)obj;
-   
-   ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
-   ASSERT(system != NULL);
-   
-   ALLEGRO_DISPLAY *display = *(ALLEGRO_DISPLAY**)_al_vector_ref(&system->displays, 0);
-   ASSERT(display != NULL);
-
-   switch(action) {
-      case ALLEGRO_EVENT_TOUCH_BEGIN:
-         _al_android_touch_input_handle_begin(id, al_get_time(), x, y, primary, display);
-         break;
-         
-      case ALLEGRO_EVENT_TOUCH_END:
-         _al_android_touch_input_handle_end(id, al_get_time(), x, y, primary, display);
-         break;
-         
-      case ALLEGRO_EVENT_TOUCH_MOVE:
-         _al_android_touch_input_handle_move(id, al_get_time(), x, y, primary, display);
-         break;
-         
-      case ALLEGRO_EVENT_TOUCH_CANCEL:
-         _al_android_touch_input_handle_cancel(id, al_get_time(), x, y, primary, display);
-         break;
-         
-      default:
-         ALLEGRO_ERROR("unknown touch action: %i", action);
+   /* Send a resize event to signify that the display may have changed sizes. */
+   if (!d->first_run) {
+      _al_android_resize_display(d, width, height);
    }
-   
+}
+
+JNI_FUNC(void, AllegroSurface, nativeOnJoystickAxis, (JNIEnv *env, jobject obj,
+   jint index, jint stick, jint axis, jfloat value))
+{
+   (void)env;
+   (void)obj;
+   _al_android_generate_joystick_axis_event(index+1, stick, axis, value);
+}
+
+JNI_FUNC(void, AllegroSurface, nativeOnJoystickButton, (JNIEnv *env, jobject obj,
+   jint index, jint button, jboolean down))
+{
+   (void)env;
+   (void)obj;
+   _al_android_generate_joystick_button_event(index+1, button, down);
 }
 
 void _al_android_create_surface(JNIEnv *env, bool post)
 {
-   _jni_callVoidMethod(env, _al_android_activity_object(), post ? "postCreateSurface" : "createSurface");
+   if (post) {
+      _jni_callVoidMethod(env, _al_android_activity_object(),
+         "postCreateSurface");
+   }
+   else {
+      _jni_callVoidMethod(env, _al_android_activity_object(),
+         "createSurface");
+   }
 }
 
 void _al_android_destroy_surface(JNIEnv *env, jobject surface, bool post)
 {
    (void)surface;
    if (post) {
-      _jni_callVoidMethodV(env, _al_android_activity_object(), "postDestroySurface", "()V");
+      _jni_callVoidMethodV(env, _al_android_activity_object(),
+         "postDestroySurface", "()V");
    }
    else {
-      _jni_callVoidMethodV(env, _al_android_activity_object(), "destroySurface", "()V");
+      _jni_callVoidMethodV(env, _al_android_activity_object(),
+         "destroySurface", "()V");
    }
 }
 
@@ -285,65 +236,58 @@ void _al_android_clear_current(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d)
    _jni_callVoidMethodV(env, d->surface_object, "egl_clearCurrent", "()V");
 }
 
-void _al_android_setup_opengl_view(ALLEGRO_DISPLAY *d)
-{
-   ALLEGRO_DEBUG("setup opengl view d->w=%d d->h=%d", d->w, d->h);
-
-   glViewport(0, 0, d->w, d->h);
-
-   al_identity_transform(&d->proj_transform);
-   al_orthographic_transform(&d->proj_transform, 0, 0, -1, d->w, d->h, 1);
-   al_set_projection_transform(d, &d->proj_transform);
-
-   al_identity_transform(&d->view_transform);
-   al_use_transform(&d->view_transform);
-}
-
-static bool _al_android_init_display(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *display)
+static bool _al_android_init_display(JNIEnv *env,
+   ALLEGRO_DISPLAY_ANDROID *display)
 {
    ALLEGRO_SYSTEM_ANDROID *system = (void *)al_get_system_driver();
    ALLEGRO_DISPLAY *d = (ALLEGRO_DISPLAY *)display;
-   int version, ret;
-      
+   int config_index;
+   bool programmable_pipeline;
+   int ret;
+
    ASSERT(system != NULL);
    ASSERT(display != NULL);
 
    ALLEGRO_DEBUG("calling egl_Init");
-      
-   if(!_jni_callBooleanMethodV(env, display->surface_object, "egl_Init", "()Z")) {
+
+   if (!_jni_callBooleanMethodV(env, display->surface_object,
+         "egl_Init", "()Z"))
+   {
       // XXX should probably destroy the AllegroSurface here
       ALLEGRO_ERROR("failed to initialize EGL");
       display->failed = true;
       return false;
    }
 
-   ALLEGRO_DEBUG("updating visuals");
-   _al_android_update_visuals(env, display);
-   ALLEGRO_DEBUG("done updating visuals");
-   
-   memcpy(&d->extra_settings, &system->visual, sizeof(ALLEGRO_EXTRA_DISPLAY_SETTINGS));
+   config_index = select_best_visual_and_update(env, display);
+   if (config_index < 0) {
+      // XXX should probably destroy the AllegroSurface here
+      ALLEGRO_ERROR("Failed to choose config.\n");
+      display->failed = true;
+      return false;
+   }
 
-   if (d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
-   	version = 2;
-   }
-   else {
-   	version = 1;
-   }
+   programmable_pipeline = (d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE);
 
    ALLEGRO_DEBUG("calling egl_createContext");
-   if (!(ret = _jni_callIntMethodV(env, display->surface_object, "egl_createContext", "(I)I", version))) {
+   ret = _jni_callIntMethodV(env, display->surface_object,
+      "egl_createContext", "(IZ)I", config_index, programmable_pipeline);
+   if (!ret) {
       // XXX should probably destroy the AllegroSurface here
       ALLEGRO_ERROR("failed to create egl context!");
       display->failed = true;
       return false;
    }
 
-   if (ret == 2 && (d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
-	d->flags &= ~ALLEGRO_PROGRAMMABLE_PIPELINE;
+   // XXX ret is never 2
+   if (ret == 2 && programmable_pipeline) {
+      d->flags &= ~ALLEGRO_PROGRAMMABLE_PIPELINE;
    }
-   
+
    ALLEGRO_DEBUG("calling egl_createSurface");
-   if (!_jni_callBooleanMethodV(env, display->surface_object, "egl_createSurface", "()Z")) {
+   if (!_jni_callBooleanMethodV(env, display->surface_object,
+         "egl_createSurface", "()Z"))
+   {
       // XXX should probably destroy the AllegroSurface here
       ALLEGRO_ERROR("failed to create egl surface!");
       display->failed = true;
@@ -355,27 +299,28 @@ static bool _al_android_init_display(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *displ
    _al_ogl_set_extensions(d->ogl_extras->extension_api);
 
    _al_ogl_setup_gl(d);
-   
+
    return true;
 }
 
 
 /* implementation helpers */
 
-static void _al_android_resize_display(ALLEGRO_DISPLAY_ANDROID *d, int width, int height)
+static void _al_android_resize_display(ALLEGRO_DISPLAY_ANDROID *d,
+   int width, int height)
 {
    ALLEGRO_DISPLAY *display = (ALLEGRO_DISPLAY *)d;
    bool emitted_event = true;
 
    ALLEGRO_DEBUG("display resize");
-   
+
    d->resize_acknowledge = false;
    d->resize_acknowledge2 = false;
-  
+
    ALLEGRO_DEBUG("locking mutex");
    al_lock_mutex(d->mutex);
    ALLEGRO_DEBUG("done locking mutex");
-   
+
    ALLEGRO_DEBUG("locking display event source: %p", d);
    _al_event_source_lock(&display->es);
 
@@ -392,9 +337,9 @@ static void _al_android_resize_display(ALLEGRO_DISPLAY_ANDROID *d, int width, in
       _al_event_source_emit_event(&display->es, &event);
    }
    else {
-   	emitted_event = false;
+      emitted_event = false;
    }
-   
+
    ALLEGRO_DEBUG("unlocking display event source");
    _al_event_source_unlock(&display->es);
 
@@ -410,60 +355,72 @@ static void _al_android_resize_display(ALLEGRO_DISPLAY_ANDROID *d, int width, in
 
    display->w = width;
    display->h = height;
-   
+
    ALLEGRO_DEBUG("resize backbuffer");
-   _al_ogl_resize_backbuffer(display->ogl_extras->backbuffer, width, height);
+   _al_ogl_setup_gl(display);
 
    if (emitted_event) {
       d->resize_acknowledge2 = true;
       al_broadcast_cond(d->cond);
    }
-   
+
    al_unlock_mutex(d->mutex);
 
    ALLEGRO_DEBUG("done");
 }
 
-static void _al_android_update_visuals(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d)
+static void call_initRequiredAttribs(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d)
 {
-   const int RENDERABLE_TYPE = 0x3040;
-   const int OPENGLES2_BIT = 4;
+   _jni_callVoidMethodV(env, d->surface_object,
+      "egl_initRequiredAttribs", "()V");
+}
 
-   ALLEGRO_SYSTEM_ANDROID *system = (void *)al_get_system_driver();
-   ALLEGRO_DISPLAY *display = (ALLEGRO_DISPLAY *)d;
-   ALLEGRO_EXTRA_DISPLAY_SETTINGS *ref = &main_thread_display_settings;
-   ALLEGRO_EXTRA_DISPLAY_SETTINGS *eds = &system->visual;
-   
-   eds->settings[ALLEGRO_RENDER_METHOD] = 1;
-   eds->settings[ALLEGRO_COMPATIBLE_DISPLAY] = 1;
-   eds->settings[ALLEGRO_SWAP_METHOD] = 2;
-   eds->settings[ALLEGRO_VSYNC] = 1;
+static void call_setRequiredAttrib(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d,
+   int attr, int value)
+{
+   _jni_callVoidMethodV(env, d->surface_object,
+      "egl_setRequiredAttrib", "(II)V", attr, value);
+}
 
-   /* FIXME: after setting our values and calling eglChooseConfig, read the values back into system->visual */
-   if ((ref->required & ((int64_t)1 << ALLEGRO_COLOR_SIZE)) || (ref->suggested & ((int64_t)1 << ALLEGRO_COLOR_SIZE))) {
-      if (ref->settings[ALLEGRO_COLOR_SIZE] == 16) {
-         _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", ALLEGRO_RED_SIZE, 5);
-         _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", ALLEGRO_GREEN_SIZE, 6);
-         _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", ALLEGRO_BLUE_SIZE, 5);
-      }
-      else { // only other thing supported is 32 bit
-         _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", ALLEGRO_RED_SIZE, 8);
-         _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", ALLEGRO_GREEN_SIZE, 8);
-         _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", ALLEGRO_BLUE_SIZE, 8);
-      }
+static int call_chooseConfig(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d)
+{
+   bool pp = (d->display.flags & ALLEGRO_PROGRAMMABLE_PIPELINE);
+   return _jni_callIntMethodV(env, d->surface_object,
+      "egl_chooseConfig", "(Z)I", pp);
+}
+
+static void call_getConfigAttribs(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d,
+   int configIndex, ALLEGRO_EXTRA_DISPLAY_SETTINGS *eds)
+{
+   jintArray jArray;
+   jint *ptr;
+   int i;
+
+   jArray = (*env)->NewIntArray(env, ALLEGRO_DISPLAY_OPTIONS_COUNT);
+   if (jArray == NULL) {
+      ALLEGRO_ERROR("NewIntArray failed\n");
+      return;
    }
 
-   /* There is no equivalent ot COLOR_SIZE in EGL except setting the individual components */
+   _jni_callVoidMethodV(env, d->surface_object,
+      "egl_getConfigAttribs", "(I[I)V", configIndex, jArray);
 
+   ptr = (*env)->GetIntArrayElements(env, jArray, 0);
+   for (i = 0; i < ALLEGRO_DISPLAY_OPTIONS_COUNT; i++) {
+      eds->settings[i] = ptr[i];
+   }
+
+   (*env)->ReleaseIntArrayElements(env, jArray, ptr, 0);
+}
+
+static void set_required_attribs(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d,
+   ALLEGRO_EXTRA_DISPLAY_SETTINGS *ref)
+{
    #define MAYBE_SET(v)                                                       \
       do {                                                                    \
-         if ((ref->required & ((int64_t)1 << v)) ||                           \
-             (ref->suggested & ((int64_t)1 << v)))                            \
-         {                                                                    \
-            ALLEGRO_DEBUG("calling egl_setConfigAttrib(%d, %d)",              \
-               v, ref->settings[v]);                                          \
-            _jni_callVoidMethodV(env, d->surface_object,                      \
-               "egl_setConfigAttrib", "(II)V", v, ref->settings[v]);          \
+         bool required = (ref->required & ((int64_t)1 << (v)));               \
+         if (required) {                                                      \
+            call_setRequiredAttrib(env, d, (v), ref->settings[(v)]);          \
          }                                                                    \
       } while (0)
 
@@ -471,35 +428,84 @@ static void _al_android_update_visuals(JNIEnv *env, ALLEGRO_DISPLAY_ANDROID *d)
    MAYBE_SET(ALLEGRO_GREEN_SIZE);
    MAYBE_SET(ALLEGRO_BLUE_SIZE);
    MAYBE_SET(ALLEGRO_ALPHA_SIZE);
+   MAYBE_SET(ALLEGRO_COLOR_SIZE);
    MAYBE_SET(ALLEGRO_DEPTH_SIZE);
    MAYBE_SET(ALLEGRO_STENCIL_SIZE);
    MAYBE_SET(ALLEGRO_SAMPLE_BUFFERS);
    MAYBE_SET(ALLEGRO_SAMPLES);
 
    #undef MAYBE_SET
+}
 
-   if (display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
-      _jni_callVoidMethodV(env, d->surface_object, "egl_setConfigAttrib", "(II)V", RENDERABLE_TYPE, OPENGLES2_BIT);
+static int select_best_visual_and_update(JNIEnv *env,
+   ALLEGRO_DISPLAY_ANDROID *d)
+{
+   ALLEGRO_EXTRA_DISPLAY_SETTINGS *ref = &main_thread_display_settings;
+   ALLEGRO_EXTRA_DISPLAY_SETTINGS **eds = NULL;
+   int num_configs;
+   int chosen_index;
+   int i;
+
+   ALLEGRO_DEBUG("Setting required display settings.\n");
+   call_initRequiredAttribs(env, d);
+   set_required_attribs(env, d, ref);
+
+   ALLEGRO_DEBUG("Calling eglChooseConfig.\n");
+   num_configs = call_chooseConfig(env, d);
+   if (num_configs < 1) {
+      return -1;
    }
+
+   eds = al_calloc(num_configs, sizeof(*eds));
+
+   for (i = 0; i < num_configs; i++) {
+      eds[i] = al_calloc(1, sizeof(*eds[i]));
+
+      call_getConfigAttribs(env, d, i, eds[i]);
+
+      eds[i]->settings[ALLEGRO_RENDER_METHOD] = 1;
+      eds[i]->settings[ALLEGRO_COMPATIBLE_DISPLAY] = 1;
+      eds[i]->settings[ALLEGRO_SWAP_METHOD] = 2;
+      eds[i]->settings[ALLEGRO_VSYNC] = 1;
+
+      eds[i]->index = i;
+      eds[i]->score = _al_score_display_settings(eds[i], ref);
+   }
+
+   ALLEGRO_DEBUG("Sorting configs.\n");
+   qsort(eds, num_configs, sizeof(*eds), _al_display_settings_sorter);
+
+   chosen_index = eds[0]->index;
+   ALLEGRO_INFO("Chose config %i\n", chosen_index);
+
+   d->display.extra_settings = *eds[0];
+
+   /* Don't need this any more. */
+   for (i = 0; i < num_configs; i++) {
+      al_free(eds[i]);
+   }
+   al_free(eds);
+
+   return chosen_index;
 }
 
 /* driver implementation hooks */
-ALLEGRO_DISPLAY_INTERFACE *_al_get_android_display_driver(void);
 
 static ALLEGRO_DISPLAY *android_create_display(int w, int h)
 {
    ALLEGRO_DEBUG("begin");
 
    int flags = al_get_new_display_flags();
-#ifdef ALLEGRO_NO_GLES2
+#ifndef ALLEGRO_CFG_OPENGL_PROGRAMMABLE_PIPELINE
    if (flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+      ALLEGRO_WARN("Programmable pipeline support not built.\n");
       return NULL;
    }
 #endif
-   
+
    ALLEGRO_DISPLAY_ANDROID *d = al_malloc(sizeof *d);
    ALLEGRO_DISPLAY *display = (void *)d;
-   
+
    ALLEGRO_OGL_EXTRAS *ogl = al_malloc(sizeof *ogl);
    memset(d, 0, sizeof *d);
    memset(ogl, 0, sizeof *ogl);
@@ -508,30 +514,32 @@ static ALLEGRO_DISPLAY *android_create_display(int w, int h)
    display->w = w;
    display->h = h;
    display->flags = flags;
-   
+
    _al_event_source_init(&display->es);
-   
-   /* Java thread needs this but it's thread local. For now we assume display is created and set up in main thread */
-   memcpy(&main_thread_display_settings, _al_get_new_display_settings(), sizeof(main_thread_display_settings));
+
+   /* Java thread needs this but it's thread local.
+    * For now we assume display is created and set up in main thread.
+    */
+   main_thread_display_settings = *_al_get_new_display_settings();
 
    d->mutex = al_create_mutex();
    d->cond = al_create_cond();
    d->recreate = true;
    d->first_run = true;
    d->failed = false;
-   
+
    ALLEGRO_SYSTEM *system = (void *)al_get_system_driver();
    ASSERT(system != NULL);
-   
+
    ALLEGRO_DISPLAY_ANDROID **add;
    add = _al_vector_alloc_back(&system->displays);
    *add = d;
-   
+
    al_lock_mutex(d->mutex);
 
    // post create surface request and wait
    _al_android_create_surface(_al_android_get_jnienv(), true);
-   
+
    // wait for sizing to happen
    ALLEGRO_DEBUG("waiting for surface onChange");
    while (!d->created && !d->failed) {
@@ -547,18 +555,17 @@ static ALLEGRO_DISPLAY *android_create_display(int w, int h)
       al_free(d);
       return NULL;
    }
-   
+
    display->flags |= ALLEGRO_OPENGL;
 
    ALLEGRO_DEBUG("display: %p %ix%i", display, display->w, display->h);
 
    _al_android_clear_current(_al_android_get_jnienv(), d);
    _al_android_make_current(_al_android_get_jnienv(), d);
-   
-   _al_android_setup_opengl_view(display);
 
    /* Don't need to repeat what this does */
-   android_set_display_option(display, ALLEGRO_SUPPORTED_ORIENTATIONS, al_get_new_display_option(ALLEGRO_SUPPORTED_ORIENTATIONS, NULL));
+   android_set_display_option(display, ALLEGRO_SUPPORTED_ORIENTATIONS,
+      al_get_new_display_option(ALLEGRO_SUPPORTED_ORIENTATIONS, NULL));
 
    ALLEGRO_DEBUG("end");
    return display;
@@ -567,9 +574,18 @@ static ALLEGRO_DISPLAY *android_create_display(int w, int h)
 static void android_destroy_display(ALLEGRO_DISPLAY *dpy)
 {
    ALLEGRO_DISPLAY_ANDROID *d = (ALLEGRO_DISPLAY_ANDROID*)dpy;
-   
+
+   ALLEGRO_DEBUG("clear current");
+
+   if (!d->created) {
+      // if nativeOnDestroy was called (the app switched out) and
+      // then the display is destroyed before the app switches back
+      // in, there is no EGL context to destroy.
+      goto already_deleted;
+   }
+
    _al_android_clear_current(_al_android_get_jnienv(), d);
-   
+
    al_lock_mutex(d->mutex);
 
    d->is_destroy_display = true;
@@ -584,22 +600,23 @@ static void android_destroy_display(ALLEGRO_DISPLAY *dpy)
    while (d->created) {
    	al_rest(0.001);
    }
-   
+
    _al_event_source_free(&dpy->es);
 
+already_deleted:
    // XXX: this causes a crash, no idea why as of yet
    //ALLEGRO_DEBUG("destroy backbuffer");
    //_al_ogl_destroy_backbuffer(al_get_backbuffer(dpy));
-   
+
    ALLEGRO_DEBUG("destroy mutex");
    al_destroy_mutex(d->mutex);
-   
+
    ALLEGRO_DEBUG("destroy cond");
    al_destroy_cond(d->cond);
-   
+
    ALLEGRO_DEBUG("free ogl_extras");
    al_free(dpy->ogl_extras);
-   
+
    ALLEGRO_DEBUG("remove display from system list");
    ALLEGRO_SYSTEM *s = al_get_system_driver();
    _al_vector_find_and_delete(&s->displays, &d);
@@ -609,16 +626,23 @@ static void android_destroy_display(ALLEGRO_DISPLAY *dpy)
 
    ALLEGRO_DEBUG("free display");
    al_free(d);
-   
+
    ALLEGRO_DEBUG("done");
 }
 
 static bool android_set_current_display(ALLEGRO_DISPLAY *dpy)
 {
-   _al_android_clear_current(_al_android_get_jnienv(), (ALLEGRO_DISPLAY_ANDROID*)al_get_current_display());
-   
    ALLEGRO_DEBUG("make current %p", dpy);
-   if (dpy) _al_android_make_current(_al_android_get_jnienv(), (ALLEGRO_DISPLAY_ANDROID*)dpy);
+
+   if (al_get_current_display() != NULL){
+     _al_android_clear_current(_al_android_get_jnienv(),
+        (ALLEGRO_DISPLAY_ANDROID *)al_get_current_display());
+   }
+
+   if (dpy) {
+      _al_android_make_current(_al_android_get_jnienv(),
+         (ALLEGRO_DISPLAY_ANDROID *)dpy);
+   }
 
    _al_ogl_update_render_state(dpy);
 
@@ -628,29 +652,35 @@ static bool android_set_current_display(ALLEGRO_DISPLAY *dpy)
 static void android_unset_current_display(ALLEGRO_DISPLAY *dpy)
 {
    ALLEGRO_DEBUG("unset current %p", dpy);
-   _al_android_clear_current(_al_android_get_jnienv(), (ALLEGRO_DISPLAY_ANDROID*)dpy);
+   _al_android_clear_current(_al_android_get_jnienv(),
+      (ALLEGRO_DISPLAY_ANDROID *)dpy);
 }
 
 static void android_flip_display(ALLEGRO_DISPLAY *dpy)
 {
-   _jni_callVoidMethod(_al_android_get_jnienv(), ((ALLEGRO_DISPLAY_ANDROID*)dpy)->surface_object, "egl_SwapBuffers");
+   _jni_callVoidMethod(_al_android_get_jnienv(),
+      ((ALLEGRO_DISPLAY_ANDROID *)dpy)->surface_object, "egl_SwapBuffers");
 
-   /* Backup bitmaps created without ALLEGRO_NO_PRESERVE_TEXTURE that are dirty, to system memory */
-   _al_opengl_backup_dirty_bitmaps(dpy, true);
+   /* Backup bitmaps created without ALLEGRO_NO_PRESERVE_TEXTURE that are
+    * dirty, to system memory.
+    */
+   al_backup_dirty_bitmaps(dpy);
 }
 
-static void android_update_display_region(ALLEGRO_DISPLAY *dpy, int x, int y, int width, int height)
+static void android_update_display_region(ALLEGRO_DISPLAY *dpy, int x, int y,
+   int width, int height)
 {
-   (void)dpy; (void)x; (void)y; (void)width; (void)height;
+   (void)x;
+   (void)y;
+   (void)width;
+   (void)height;
+   android_flip_display(dpy);
 }
-
 
 static bool android_acknowledge_resize(ALLEGRO_DISPLAY *dpy)
 {
-   ALLEGRO_DISPLAY_ANDROID *d = (ALLEGRO_DISPLAY_ANDROID*)dpy;
-   
-   ALLEGRO_DEBUG("android_acknowledge_resize");
-   
+   ALLEGRO_DISPLAY_ANDROID *d = (ALLEGRO_DISPLAY_ANDROID *)dpy;
+
    ALLEGRO_DEBUG("clear current context");
    _al_android_clear_current(_al_android_get_jnienv(), d);
 
@@ -671,8 +701,6 @@ static bool android_acknowledge_resize(ALLEGRO_DISPLAY *dpy)
    ALLEGRO_DEBUG("acquire context");
    _al_android_make_current(_al_android_get_jnienv(), d);
 
-   _al_android_setup_opengl_view(dpy);
-   
    ALLEGRO_DEBUG("done");
    return true;
 }
@@ -683,7 +711,8 @@ static int android_get_orientation(ALLEGRO_DISPLAY *dpy)
    return _al_android_get_display_orientation();
 }
 
-static bool android_is_compatible_bitmap(ALLEGRO_DISPLAY *dpy, ALLEGRO_BITMAP *bmp)
+static bool android_is_compatible_bitmap(ALLEGRO_DISPLAY *dpy,
+   ALLEGRO_BITMAP *bmp)
 {
    (void)dpy;
    (void)bmp;
@@ -692,11 +721,14 @@ static bool android_is_compatible_bitmap(ALLEGRO_DISPLAY *dpy, ALLEGRO_BITMAP *b
 
 static bool android_resize_display(ALLEGRO_DISPLAY *dpy, int w, int h)
 {
-   (void)dpy; (void)w; (void)h;
+   (void)dpy;
+   (void)w;
+   (void)h;
    return false;
 }
 
-static void android_set_icons(ALLEGRO_DISPLAY *dpy, int num_icons, ALLEGRO_BITMAP *bmps[])
+static void android_set_icons(ALLEGRO_DISPLAY *dpy, int num_icons,
+   ALLEGRO_BITMAP *bmps[])
 {
    (void)dpy;
    (void)num_icons;
@@ -710,7 +742,9 @@ static void android_set_window_title(ALLEGRO_DISPLAY *dpy, const char *title)
 
 static void android_set_window_position(ALLEGRO_DISPLAY *dpy, int x, int y)
 {
-   (void)dpy; (void)x; (void)y;
+   (void)dpy;
+   (void)x;
+   (void)y;
 }
 
 static void android_get_window_position(ALLEGRO_DISPLAY *dpy, int *x, int *y)
@@ -731,13 +765,15 @@ static bool android_wait_for_vsync(ALLEGRO_DISPLAY *dpy)
    return false;
 }
 
-static bool android_set_mouse_cursor(ALLEGRO_DISPLAY *dpy, ALLEGRO_MOUSE_CURSOR *cursor)
+static bool android_set_mouse_cursor(ALLEGRO_DISPLAY *dpy,
+   ALLEGRO_MOUSE_CURSOR *cursor)
 {
    (void)dpy; (void)cursor;
    return false;
 }
 
-static bool android_set_system_mouse_cursor(ALLEGRO_DISPLAY *dpy, ALLEGRO_SYSTEM_MOUSE_CURSOR id)
+static bool android_set_system_mouse_cursor(ALLEGRO_DISPLAY *dpy,
+   ALLEGRO_SYSTEM_MOUSE_CURSOR id)
 {
    (void)dpy; (void)id;
    return false;
@@ -761,77 +797,76 @@ static void android_acknowledge_drawing_halt(ALLEGRO_DISPLAY *dpy)
    ALLEGRO_DEBUG("android_acknowledge_drawing_halt");
 
    for (i = 0; i < (int)dpy->bitmaps._size; i++) {
-      ALLEGRO_BITMAP **bptr = (ALLEGRO_BITMAP **)_al_vector_ref(&dpy->bitmaps, i);
+      ALLEGRO_BITMAP **bptr = _al_vector_ref(&dpy->bitmaps, i);
       ALLEGRO_BITMAP *bmp = *bptr;
-      if (!(bmp->flags & ALLEGRO_MEMORY_BITMAP) && !bmp->parent) {
-	    if (!(bmp->flags & ALLEGRO_NO_PRESERVE_TEXTURE)) {
-               ALLEGRO_BITMAP_EXTRA_OPENGL *extra = bmp->extra;
-               al_remove_opengl_fbo(bmp);
-               glDeleteTextures(1, &extra->texture);
-	       extra->texture = 0;
-	    }
+      int bitmap_flags = al_get_bitmap_flags(bmp);
+
+      if (!bmp->parent &&
+         !(bitmap_flags & ALLEGRO_MEMORY_BITMAP) &&
+         !(bitmap_flags & ALLEGRO_NO_PRESERVE_TEXTURE))
+      {
+         ALLEGRO_BITMAP_EXTRA_OPENGL *extra = bmp->extra;
+         al_remove_opengl_fbo(bmp);
+         glDeleteTextures(1, &extra->texture);
+         extra->texture = 0;
       }
    }
 
    ALLEGRO_DISPLAY_ANDROID *d = (ALLEGRO_DISPLAY_ANDROID *)dpy;
-   
+
    _al_android_clear_current(_al_android_get_jnienv(), d);
 
+   /* XXX mutex? */
    al_broadcast_cond(d->cond);
 
    ALLEGRO_DEBUG("acknowledged drawing halt");
 }
 
-void android_broadcast_resume(ALLEGRO_DISPLAY_ANDROID *d)
+static void android_broadcast_resume(ALLEGRO_DISPLAY_ANDROID *d)
 {
    ALLEGRO_DEBUG("Broadcasting resume");
-   al_lock_mutex(d->mutex);
    d->resumed = true;
    al_broadcast_cond(d->cond);
-   al_unlock_mutex(d->mutex);
    ALLEGRO_DEBUG("done broadcasting resume");
 }
 
 static void android_acknowledge_drawing_resume(ALLEGRO_DISPLAY *dpy)
 {
-   int i, size;
+   unsigned i;
 
    ALLEGRO_DEBUG("begin");
 
-   ALLEGRO_DEBUG("acknowledge_drawing_resume");
-   
    ALLEGRO_DISPLAY_ANDROID *d = (ALLEGRO_DISPLAY_ANDROID *)dpy;
-   
+
    _al_android_clear_current(_al_android_get_jnienv(), d);
    _al_android_make_current(_al_android_get_jnienv(), d);
-   
+
    ALLEGRO_DEBUG("made current");
 
    if (dpy->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
       dpy->default_shader = _al_create_default_shader(dpy->flags);
    }
 
-   al_set_target_backbuffer(dpy);
-   
-   _al_android_setup_opengl_view(dpy);
-
    // Bitmaps can still have stale shaders attached.
-   size = (int)dpy->bitmaps._size;
-   for (i = 0; i < size; i++) {
-      ALLEGRO_BITMAP **bptr = (ALLEGRO_BITMAP **)_al_vector_ref(&dpy->bitmaps, i);
-      ALLEGRO_BITMAP *bmp = *bptr;
-      _al_set_bitmap_shader_field(bmp, NULL);
-   }
+   _al_glsl_unuse_shaders();
+
+   // Restore the transformations.
+   dpy->vt->update_transformation(dpy, al_get_target_bitmap());
 
    // Restore bitmaps
    // have to get this because new bitmaps could be created below
-   size = (int)dpy->bitmaps._size;
-   for (i = 0; i < size; i++) {
-      ALLEGRO_BITMAP **bptr = (ALLEGRO_BITMAP **)_al_vector_ref(&dpy->bitmaps, i);
+   for (i = 0; i < _al_vector_size(&dpy->bitmaps); i++) {
+      ALLEGRO_BITMAP **bptr = _al_vector_ref(&dpy->bitmaps, i);
       ALLEGRO_BITMAP *bmp = *bptr;
-      if (!bmp->parent && !(bmp->flags & ALLEGRO_MEMORY_BITMAP) &&
-            !(bmp->flags & ALLEGRO_NO_PRESERVE_TEXTURE)) {
-         _al_ogl_upload_bitmap_memory(bmp, bmp->format, bmp->memory);
+      int bitmap_flags = al_get_bitmap_flags(bmp);
+
+      if (!bmp->parent &&
+         !(bitmap_flags & ALLEGRO_MEMORY_BITMAP) &&
+         !(bitmap_flags & ALLEGRO_NO_PRESERVE_TEXTURE))
+      {
+         int format = al_get_bitmap_format(bmp);
+         format = _al_pixel_format_is_compressed(format) ? ALLEGRO_PIXEL_FORMAT_ABGR_8888_LE : format;
+         _al_ogl_upload_bitmap_memory(bmp, format, bmp->memory);
          bmp->dirty = false;
       }
    }
@@ -844,11 +879,10 @@ static void android_acknowledge_drawing_resume(ALLEGRO_DISPLAY *dpy)
 static void android_set_display_option(ALLEGRO_DISPLAY *d, int o, int v)
 {
    (void)d;
+
    if (o == ALLEGRO_SUPPORTED_ORIENTATIONS) {
-      int orientation = _jni_callIntMethodV(_al_android_get_jnienv(),
-         _al_android_activity_object(), "getAndroidOrientation", "(I)I", v);
-      _jni_callVoidMethodV(_al_android_get_jnienv(), _al_android_activity_object(),
-         "setRequestedOrientation", "(I)V", orientation);
+      _jni_callVoidMethodV(_al_android_get_jnienv(),
+         _al_android_activity_object(), "setAllegroOrientation", "(I)V", v);
    }
 }
 
@@ -857,10 +891,10 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_android_display_driver(void)
 {
    if (vt)
       return vt;
-   
+
    vt = al_malloc(sizeof *vt);
    memset(vt, 0, sizeof *vt);
-   
+
    vt->create_display = android_create_display;
    vt->destroy_display = android_destroy_display;
    vt->set_current_display = android_set_current_display;
@@ -871,7 +905,7 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_android_display_driver(void)
    vt->create_bitmap = _al_ogl_create_bitmap;
    vt->get_backbuffer = _al_ogl_get_backbuffer;
    vt->set_target_bitmap = _al_ogl_set_target_bitmap;
-   
+
    vt->get_orientation = android_get_orientation;
 
    vt->is_compatible_bitmap = android_is_compatible_bitmap;
@@ -894,8 +928,11 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_android_display_driver(void)
    vt->set_display_option = android_set_display_option;
 
    vt->update_render_state = _al_ogl_update_render_state;
-   
+
    _al_ogl_add_drawing_functions(vt);
-    
+   _al_android_add_clipboard_functions(vt);
+
    return vt;
 }
+
+/* vim: set sts=3 sw=3 et: */

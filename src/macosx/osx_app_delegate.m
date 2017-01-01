@@ -56,7 +56,7 @@ static BOOL in_bundle(void)
 }
 
 
-@interface AllegroAppDelegate : NSObject
+@interface AllegroAppDelegate : NSObject <NSApplicationDelegate>
 {
     NSTimer* activity;
 }
@@ -130,8 +130,11 @@ static BOOL in_bundle(void)
         unsigned int len = 1 + [data length];
         arg1 = al_malloc(len);
         memset(arg1, 0, len);
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1100
+        [data getBytes: arg1 length:len];
+#else
         [data getBytes: arg1];
-        
+#endif
         return YES;
     }
     else {
@@ -252,7 +255,7 @@ static void call_user_main(void)
 
 /* Helper macro to add entries to the menu */
 #define add_menu(name, sel, eq)                                         \
-        [menu addItem: [[[NSMenuItem allocWithZone: [NSMenu menuZone]]   \
+        [menu addItem: [[[NSMenuItem alloc]   \
                                     initWithTitle: name                 \
                                            action: @selector(sel)       \
                                     keyEquivalent: eq] autorelease]]                 \
@@ -291,12 +294,12 @@ int _al_osx_run_main(int argc, char **argv,
         {
             title = [[NSProcessInfo processInfo] processName];
         }
-        NSMenu* main_menu = [[NSMenu allocWithZone: [NSMenu menuZone]] initWithTitle: @""];
+        NSMenu* main_menu = [[NSMenu alloc] initWithTitle: @""];
         [NSApp setMainMenu: main_menu];
 
         /* Add application ("Apple") menu */
-        menu = [[NSMenu allocWithZone: [NSMenu menuZone]] initWithTitle: @"Apple menu"];
-        temp_item = [[NSMenuItem allocWithZone: [NSMenu menuZone]]
+        menu = [[NSMenu alloc] initWithTitle: @"Apple menu"];
+        temp_item = [[NSMenuItem alloc]
                      initWithTitle: @""
                      action: NULL
                      keyEquivalent: @""];
@@ -312,9 +315,9 @@ int _al_osx_run_main(int argc, char **argv,
         [menu release];
 
         /* Add "Window" menu */
-        menu = [[NSMenu allocWithZone: [NSMenu menuZone]]
+        menu = [[NSMenu alloc]
                         initWithTitle: @"Window"];
-        temp_item = [[NSMenuItem allocWithZone: [NSMenu menuZone]]
+        temp_item = [[NSMenuItem alloc]
                                  initWithTitle: @""
                                         action: NULL
                                  keyEquivalent: @""];

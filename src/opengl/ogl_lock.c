@@ -74,19 +74,19 @@ static bool exactly_15bpp(int pixel_format)
  * Locking
  */
 
-static void ogl_lock_region_backbuffer(
+static bool ogl_lock_region_backbuffer(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format, int flags);
-static void ogl_lock_region_nonbb_writeonly(
+static bool ogl_lock_region_nonbb_writeonly(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format);
-static void ogl_lock_region_nonbb_readwrite(
+static bool ogl_lock_region_nonbb_readwrite(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format);
-static void ogl_lock_region_nonbb_readwrite_fbo(
+static bool ogl_lock_region_nonbb_readwrite_fbo(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format);
-static void ogl_lock_region_nonbb_readwrite_nonfbo(
+static bool ogl_lock_region_nonbb_readwrite_nonfbo(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format);
 
@@ -99,9 +99,19 @@ ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_new(ALLEGRO_BITMAP *bitmap,
    ALLEGRO_DISPLAY *disp;
    ALLEGRO_DISPLAY *old_disp = NULL;
    GLenum e;
+   bool ok;
 
    if (format == ALLEGRO_PIXEL_FORMAT_ANY) {
-      format = bitmap->format;
+      /* Never pick compressed formats with ANY, as it interacts weirdly with
+       * existing code (e.g. al_get_pixel_size() etc) */
+      int bitmap_format = al_get_bitmap_format(bitmap);
+      if (_al_pixel_format_is_compressed(bitmap_format)) {
+         // XXX Get a good format from the driver?
+         format = ALLEGRO_PIXEL_FORMAT_ABGR_8888_LE;
+      }
+      else {
+         format = bitmap_format;
+      }
    }
 
    disp = al_get_current_display();
@@ -109,12 +119,14 @@ ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_new(ALLEGRO_BITMAP *bitmap,
 
    /* Change OpenGL context if necessary. */
    if (!disp ||
-      (bitmap->display->ogl_extras->is_shared == false &&
-       bitmap->display != disp))
+      (_al_get_bitmap_display(bitmap)->ogl_extras->is_shared == false &&
+       _al_get_bitmap_display(bitmap) != disp))
    {
       old_disp = disp;
-      _al_set_current_display_only(bitmap->display);
+      _al_set_current_display_only(_al_get_bitmap_display(bitmap));
    }
+
+   ok = true;
 
    /* Set up the pixel store state.  We will need to match it when unlocking.
     * There may be other pixel store state we should be setting.
@@ -130,23 +142,26 @@ ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_new(ALLEGRO_BITMAP *bitmap,
       if (e) {
          ALLEGRO_ERROR("glPixelStorei(GL_PACK_ALIGNMENT, %d) failed (%s).\n",
             pixel_alignment, _al_gl_error_string(e));
+         ok = false;
       }
    }
 
-   if (ogl_bitmap->is_backbuffer) {
-      ALLEGRO_DEBUG("Locking backbuffer\n");
-      ogl_lock_region_backbuffer(bitmap, ogl_bitmap,
-         x, gl_y, w, h, format, flags);
-   }
-   else if (flags & ALLEGRO_LOCK_WRITEONLY) {
-      ALLEGRO_DEBUG("Locking non-backbuffer WRITEONLY\n");
-      ogl_lock_region_nonbb_writeonly(bitmap, ogl_bitmap,
-         x, gl_y, w, h, format);
-   }
-   else {
-      ALLEGRO_DEBUG("Locking non-backbuffer READWRITE\n");
-      ogl_lock_region_nonbb_readwrite(bitmap, ogl_bitmap,
-         x, gl_y, w, h, format);
+   if (ok) {
+      if (ogl_bitmap->is_backbuffer) {
+         ALLEGRO_DEBUG("Locking backbuffer\n");
+         ok = ogl_lock_region_backbuffer(bitmap, ogl_bitmap,
+            x, gl_y, w, h, format, flags);
+      }
+      else if (flags & ALLEGRO_LOCK_WRITEONLY) {
+         ALLEGRO_DEBUG("Locking non-backbuffer WRITEONLY\n");
+         ok = ogl_lock_region_nonbb_writeonly(bitmap, ogl_bitmap,
+            x, gl_y, w, h, format);
+      }
+      else {
+         ALLEGRO_DEBUG("Locking non-backbuffer READWRITE\n");
+         ok = ogl_lock_region_nonbb_readwrite(bitmap, ogl_bitmap,
+            x, gl_y, w, h, format);
+      }
    }
 
    glPopClientAttrib();
@@ -155,11 +170,17 @@ ALLEGRO_LOCKED_REGION *_al_ogl_lock_region_new(ALLEGRO_BITMAP *bitmap,
       _al_set_current_display_only(old_disp);
    }
 
-   return &bitmap->locked_region;
+   if (ok) {
+      return &bitmap->locked_region;
+   }
+
+   ALLEGRO_ERROR("Failed to lock region\n");
+   ASSERT(ogl_bitmap->lock_buffer == NULL);
+   return NULL;
 }
 
 
-static void ogl_lock_region_backbuffer(
+static bool ogl_lock_region_backbuffer(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format, int flags)
 {
@@ -168,8 +189,140 @@ static void ogl_lock_region_backbuffer(
    GLenum e;
 
    ogl_bitmap->lock_buffer = al_malloc(pitch * h);
+   if (ogl_bitmap->lock_buffer == NULL) {
+      return false;
+   }
 
    if (!(flags & ALLEGRO_LOCK_WRITEONLY)) {
+      glReadPixels(x, gl_y, w, h,
+         get_glformat(format, 2),
+         get_glformat(format, 1),
+         ogl_bitmap->lock_buffer);
+      e = glGetError();
+      if (e) {
+         ALLEGRO_ERROR("glReadPixels for format %s failed (%s).\n",
+            _al_pixel_format_name(format), _al_gl_error_string(e));
+         al_free(ogl_bitmap->lock_buffer);
+         ogl_bitmap->lock_buffer = NULL;
+         return false;
+      }
+   }
+
+   bitmap->locked_region.data = ogl_bitmap->lock_buffer + pitch * (h - 1);
+   bitmap->locked_region.format = format;
+   bitmap->locked_region.pitch = -pitch;
+   bitmap->locked_region.pixel_size = pixel_size;
+   return true;
+}
+
+
+static bool ogl_lock_region_nonbb_writeonly(
+   ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
+   int x, int gl_y, int w, int h, int format)
+{
+   const int pixel_size = al_get_pixel_size(format);
+   const int pitch = ogl_pitch(w, pixel_size);
+   (void) x;
+   (void) gl_y;
+
+   ogl_bitmap->lock_buffer = al_malloc(pitch * h);
+   if (ogl_bitmap->lock_buffer == NULL) {
+      return false;
+   }
+
+   bitmap->locked_region.data = ogl_bitmap->lock_buffer + pitch * (h - 1);
+   bitmap->locked_region.format = format;
+   bitmap->locked_region.pitch = -pitch;
+   bitmap->locked_region.pixel_size = pixel_size;
+   return true;
+}
+
+
+static bool ogl_lock_region_nonbb_readwrite(
+   ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
+   int x, int gl_y, int w, int h, int format)
+{
+   ALLEGRO_BITMAP *old_target;
+   bool fbo_was_set;
+   bool ok;
+
+   ASSERT(bitmap->parent == NULL);
+   ASSERT(bitmap->locked == false);
+   ASSERT(_al_get_bitmap_display(bitmap) == al_get_current_display());
+
+   /* Try to create an FBO if there isn't one. */
+   old_target = al_get_target_bitmap();
+   fbo_was_set =
+      _al_ogl_setup_fbo_non_backbuffer(_al_get_bitmap_display(bitmap), bitmap);
+
+   if (ogl_bitmap->fbo_info) {
+      ALLEGRO_DEBUG("Locking non-backbuffer READWRITE with fbo\n");
+      ok = ogl_lock_region_nonbb_readwrite_fbo(bitmap, ogl_bitmap,
+         x, gl_y, w, h, format);
+   }
+   else {
+      ALLEGRO_DEBUG("Locking non-backbuffer READWRITE no fbo\n");
+      ok = ogl_lock_region_nonbb_readwrite_nonfbo(bitmap, ogl_bitmap,
+         x, gl_y, w, h, format);
+   }
+
+   /* Restore state after switching FBO. */
+   if (fbo_was_set) {
+      if (!old_target) {
+         /* Old target was NULL; release the context. */
+         _al_set_current_display_only(NULL);
+      }
+      else if (!_al_get_bitmap_display(old_target)) {
+         /* Old target was memory bitmap; leave the current display alone. */
+      }
+      else if (old_target != bitmap) {
+         /* Old target was another OpenGL bitmap. */
+         _al_ogl_setup_fbo(_al_get_bitmap_display(old_target), old_target);
+      }
+   }
+
+   ASSERT(al_get_target_bitmap() == old_target);
+
+   return ok;
+}
+
+
+static bool ogl_lock_region_nonbb_readwrite_fbo(
+   ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
+   int x, int gl_y, int w, int h, int format)
+{
+   const int pixel_size = al_get_pixel_size(format);
+   const int pitch = ogl_pitch(w, pixel_size);
+   GLint old_fbo;
+   GLenum e;
+   bool ok;
+
+   glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &old_fbo);
+   e = glGetError();
+   if (e) {
+      ALLEGRO_ERROR("glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT) failed (%s).\n",
+         _al_gl_error_string(e));
+      return false;
+   }
+
+   ok = true;
+
+   glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, ogl_bitmap->fbo_info->fbo);
+   e = glGetError();
+   if (e) {
+      ALLEGRO_ERROR("glBindFramebufferEXT failed (%s).\n",
+         _al_gl_error_string(e));
+      ok = false;
+   }
+
+   if (ok) {
+      ogl_bitmap->lock_buffer = al_malloc(pitch * h);
+      if (ogl_bitmap->lock_buffer == NULL) {
+         ok = false;
+      }
+   }
+
+   if (ok) {
       glReadPixels(x, gl_y, w, h,
          get_glformat(format, 2),
          get_glformat(format, 1),
@@ -181,102 +334,23 @@ static void ogl_lock_region_backbuffer(
       }
    }
 
-   bitmap->locked_region.data = ogl_bitmap->lock_buffer + pitch * (h - 1);
-   bitmap->locked_region.format = format;
-   bitmap->locked_region.pitch = -pitch;
-   bitmap->locked_region.pixel_size = pixel_size;
-}
-
-
-static void ogl_lock_region_nonbb_writeonly(
-   ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
-   int x, int gl_y, int w, int h, int format)
-{
-   const int pixel_size = al_get_pixel_size(format);
-   const int pitch = ogl_pitch(w, pixel_size);
-   (void) x;
-   (void) gl_y;
-
-   ogl_bitmap->lock_buffer = al_malloc(pitch * h);
-   bitmap->locked_region.data = ogl_bitmap->lock_buffer + pitch * (h - 1);
-   bitmap->locked_region.format = format;
-   bitmap->locked_region.pitch = -pitch;
-   bitmap->locked_region.pixel_size = pixel_size;
-}
-
-
-static void ogl_lock_region_nonbb_readwrite(
-   ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
-   int x, int gl_y, int w, int h, int format)
-{
-   ALLEGRO_BITMAP *old_target = NULL;
-   bool need_to_restore_target = false;
-
-   /* Create an FBO if there isn't one. */
-   if (!ogl_bitmap->fbo_info) {
-      old_target = al_get_target_bitmap();
-      need_to_restore_target = true;
-
-      bitmap->locked = false; // FIXME: hack :(
-      if (al_is_bitmap_drawing_held())
-         al_hold_bitmap_drawing(false);
-
-      al_set_target_bitmap(bitmap); // This creates the fbo
-      bitmap->locked = true;
-   }
-
-   if (ogl_bitmap->fbo_info) {
-      ogl_lock_region_nonbb_readwrite_fbo(bitmap, ogl_bitmap,
-         x, gl_y, w, h, format);
-   }
-   else {
-      ogl_lock_region_nonbb_readwrite_nonfbo(bitmap, ogl_bitmap,
-         x, gl_y, w, h, format);
-   }
-
-   if (need_to_restore_target) {
-      /* old_target may be NULL. */
-      al_set_target_bitmap(old_target);
-   }
-}
-
-
-static void ogl_lock_region_nonbb_readwrite_fbo(
-   ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
-   int x, int gl_y, int w, int h, int format)
-{
-   const int pixel_size = al_get_pixel_size(format);
-   const int pitch = ogl_pitch(w, pixel_size);
-   GLint old_fbo;
-   GLenum e;
-
-   glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &old_fbo);
-
-   glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, ogl_bitmap->fbo_info->fbo);
-
-   ogl_bitmap->lock_buffer = al_malloc(pitch * h);
-
-   glReadPixels(x, gl_y, w, h,
-      get_glformat(format, 2),
-      get_glformat(format, 1),
-      ogl_bitmap->lock_buffer);
-
-   e = glGetError();
-   if (e) {
-      ALLEGRO_ERROR("glReadPixels for format %s failed (%s).\n",
-         _al_pixel_format_name(format), _al_gl_error_string(e));
-   }
-
    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, old_fbo);
 
-   bitmap->locked_region.data = ogl_bitmap->lock_buffer + pitch * (h - 1);
-   bitmap->locked_region.format = format;
-   bitmap->locked_region.pitch = -pitch;
-   bitmap->locked_region.pixel_size = pixel_size;
+   if (ok) {
+      bitmap->locked_region.data = ogl_bitmap->lock_buffer + pitch * (h - 1);
+      bitmap->locked_region.format = format;
+      bitmap->locked_region.pitch = -pitch;
+      bitmap->locked_region.pixel_size = pixel_size;
+      return true;
+   }
+
+   al_free(ogl_bitmap->lock_buffer);
+   ogl_bitmap->lock_buffer = NULL;
+   return ok;
 }
 
 
-static void ogl_lock_region_nonbb_readwrite_nonfbo(
+static bool ogl_lock_region_nonbb_readwrite_nonfbo(
    ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap,
    int x, int gl_y, int w, int h, int format)
 {
@@ -284,9 +358,15 @@ static void ogl_lock_region_nonbb_readwrite_nonfbo(
    const int pixel_size = al_get_pixel_size(format);
    const int pitch = ogl_pitch(ogl_bitmap->true_w, pixel_size);
    GLenum e;
+   bool ok;
    (void) w;
 
    ogl_bitmap->lock_buffer = al_malloc(pitch * ogl_bitmap->true_h);
+   if (ogl_bitmap->lock_buffer == NULL) {
+      return false;
+   }
+
+   ok = true;
 
    glBindTexture(GL_TEXTURE_2D, ogl_bitmap->texture);
    glGetTexImage(GL_TEXTURE_2D, 0,
@@ -298,13 +378,20 @@ static void ogl_lock_region_nonbb_readwrite_nonfbo(
    if (e) {
       ALLEGRO_ERROR("glGetTexImage for format %s failed (%s).\n",
          _al_pixel_format_name(format), _al_gl_error_string(e));
+      al_free(ogl_bitmap->lock_buffer);
+      ogl_bitmap->lock_buffer = NULL;
+      ok = false;
    }
 
-   bitmap->locked_region.data = ogl_bitmap->lock_buffer +
-      pitch * (gl_y + h - 1) + pixel_size * x;
-   bitmap->locked_region.format = format;
-   bitmap->locked_region.pitch = -pitch;
-   bitmap->locked_region.pixel_size = pixel_size;
+   if (ok) {
+      bitmap->locked_region.data = ogl_bitmap->lock_buffer +
+         pitch * (gl_y + h - 1) + pixel_size * x;
+      bitmap->locked_region.format = format;
+      bitmap->locked_region.pitch = -pitch;
+      bitmap->locked_region.pixel_size = pixel_size;
+   }
+
+   return ok;
 }
 
 
@@ -355,15 +442,15 @@ static void ogl_unlock_region_non_readonly(ALLEGRO_BITMAP *bitmap,
    GLenum e;
 
    disp = al_get_current_display();
-   orig_format = _al_get_real_pixel_format(disp, bitmap->format);
+   orig_format = _al_get_real_pixel_format(disp, _al_get_bitmap_memory_format(bitmap));
 
    /* Change OpenGL context if necessary. */
    if (!disp ||
-      (bitmap->display->ogl_extras->is_shared == false &&
-       bitmap->display != disp))
+      (_al_get_bitmap_display(bitmap)->ogl_extras->is_shared == false &&
+       _al_get_bitmap_display(bitmap) != disp))
    {
       old_disp = disp;
-      _al_set_current_display_only(bitmap->display);
+      _al_set_current_display_only(_al_get_bitmap_display(bitmap));
    }
 
    /* Keep this in sync with ogl_lock_region. */
@@ -403,7 +490,7 @@ static void ogl_unlock_region_non_readonly(ALLEGRO_BITMAP *bitmap,
 
       /* If using FBOs, we need to regenerate mipmaps explicitly now. */
       /* XXX why don't we check ogl_bitmap->fbo_info? */
-      if ((bitmap->flags & ALLEGRO_MIPMAP) &&
+      if ((al_get_bitmap_flags(bitmap) & ALLEGRO_MIPMAP) &&
          al_get_opengl_extension_list()->ALLEGRO_GL_EXT_framebuffer_object)
       {
          glGenerateMipmapEXT(GL_TEXTURE_2D);
@@ -577,7 +664,7 @@ static void ogl_unlock_region_nonbb_nonfbo(ALLEGRO_BITMAP *bitmap,
    else {
       ALLEGRO_DEBUG("Unlocking non-backbuffer non-FBO READWRITE\n");
       glPixelStorei(GL_UNPACK_ROW_LENGTH, ogl_bitmap->true_w);
-      start_ptr = (unsigned char *)bitmap->locked_region.data
+      start_ptr = (unsigned char *)bitmap->lock_data
             + (bitmap->lock_h - 1) * bitmap->locked_region.pitch;
    }
 

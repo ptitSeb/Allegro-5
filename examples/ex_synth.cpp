@@ -332,7 +332,6 @@ private:
    Group    group4;
    Group    group5;
    SaveButton save_button;
-   double   t;
 
 public:
    Prog(const Theme & theme, ALLEGRO_DISPLAY *display);
@@ -344,8 +343,7 @@ public:
 
 Prog::Prog(const Theme & theme, ALLEGRO_DISPLAY *display) :
    d(Dialog(theme, display, 30, 26)),
-   save_button(SaveButton()),
-   t(0.0)
+   save_button(SaveButton())
 {
    group1.add_to_dialog(d, 1, 1);
    group2.add_to_dialog(d, 1, 6);
@@ -451,6 +449,7 @@ int main(int argc, char *argv[])
    al_init_primitives_addon();
    al_init_font_addon();
    al_init_ttf_addon();
+   init_platform_specific();
 
    al_set_new_display_flags(ALLEGRO_GENERATE_EXPOSE_EVENTS);
    display = al_create_display(800, 600);
@@ -461,7 +460,7 @@ int main(int argc, char *argv[])
 
    font_gui = al_load_ttf_font("data/DejaVuSans.ttf", 12, 0);
    if (!font_gui) {
-      abort_example("Failed to load data/fixed_font.tga\n");
+      abort_example("Failed to load font\n");
    }
 
    if (!al_install_audio()) {

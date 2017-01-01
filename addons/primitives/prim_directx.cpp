@@ -31,6 +31,8 @@
 #include "allegro5/allegro_direct3d.h"
 #include "allegro5/internal/aintern_direct3d.h"
 
+ALLEGRO_DEBUG_CHANNEL("d3d_primitives")
+
 static ALLEGRO_MUTEX *d3d_mutex;
 /*
  * In the context of this file, legacy cards pretty much refer to older Intel cards.
@@ -49,11 +51,26 @@ static bool know_card_type = false;
 static bool is_legacy_card(void)
 {
    if (!know_card_type) {
-      D3DCAPS9 caps;
-      LPDIRECT3DDEVICE9 device = al_get_d3d_device(al_get_current_display());
-      device->GetDeviceCaps(&caps);
-      if (caps.PixelShaderVersion < D3DPS_VERSION(3, 0))
+      ALLEGRO_CONFIG* sys_cfg = al_get_system_config();
+      const char* detection_setting = al_get_config_value(sys_cfg, "graphics", "prim_d3d_legacy_detection");
+      detection_setting = detection_setting ? detection_setting : "default";
+      if (strcmp(detection_setting, "default") == 0) {
+         D3DCAPS9 caps;
+         LPDIRECT3DDEVICE9 device = al_get_d3d_device(al_get_current_display());
+         device->GetDeviceCaps(&caps);
+         if (caps.PixelShaderVersion < D3DPS_VERSION(2, 0))
+            legacy_card = true;
+      } else if(strcmp(detection_setting, "force_legacy") == 0) {
          legacy_card = true;
+      } else if(strcmp(detection_setting, "force_modern") == 0) {
+          legacy_card = false;
+      } else {
+         ALLEGRO_WARN("Invalid setting for prim_d3d_legacy_detection.\n");
+         legacy_card = false;
+      }
+      if (legacy_card) {
+         ALLEGRO_WARN("Your GPU is considered legacy! Some of the features of the primitives addon will be slower/disabled.\n");
+      }
       know_card_type = true;
    }
    return legacy_card;
@@ -66,8 +83,8 @@ typedef struct LEGACY_VERTEX
    float u, v;
 } LEGACY_VERTEX;
 
-static LEGACY_VERTEX* legacy_buffer;
-static int legacy_buffer_size = 0;
+static uint8_t* legacy_buffer;
+static size_t legacy_buffer_size = 0;
 #define A5V_FVF (D3DFVF_XYZ | D3DFVF_TEX2 | D3DFVF_TEXCOORDSIZE2(0) | D3DFVF_TEXCOORDSIZE4(1))
 #define A5V_LEGACY_FVF (D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX1)
 
@@ -212,42 +229,64 @@ void _al_shutdown_d3d_driver(void)
 
 #ifdef ALLEGRO_CFG_D3D
 
-static void* convert_to_legacy_vertices(const void* vtxs, int num_vertices, const int* indices, bool loop)
+static void* convert_to_legacy_vertices(const void* vtxs, int num_vertices, const int* indices, bool loop, bool pp)
 {
    const ALLEGRO_VERTEX* vtx = (const ALLEGRO_VERTEX *)vtxs;
    int ii;
    int num_needed_vertices = num_vertices;
+   size_t needed_size;
+
+   if (pp && !indices && !loop) {
+      return (void *)vtxs;
+   }
 
    if(loop)
       num_needed_vertices++;
 
+   needed_size = num_needed_vertices * (pp ? sizeof(ALLEGRO_VERTEX) : sizeof(LEGACY_VERTEX));
+
    if(legacy_buffer == 0) {
-      legacy_buffer = (LEGACY_VERTEX *)al_malloc(num_needed_vertices * sizeof(LEGACY_VERTEX));
-      legacy_buffer_size = num_needed_vertices;
-   } else if (num_needed_vertices > legacy_buffer_size) {
-      legacy_buffer = (LEGACY_VERTEX *)al_realloc(legacy_buffer, num_needed_vertices * 1.5 * sizeof(LEGACY_VERTEX));
-      legacy_buffer_size = num_needed_vertices * 1.5;
-   }
-   for(ii = 0; ii < num_vertices; ii++) {
-      ALLEGRO_VERTEX vertex;
-
-      if(indices)
-         vertex = vtx[indices[ii]];
-      else
-         vertex = vtx[ii];
-
-      legacy_buffer[ii].x = vertex.x;
-      legacy_buffer[ii].y = vertex.y;
-      legacy_buffer[ii].z = vertex.z;
-
-      legacy_buffer[ii].u = vertex.u;
-      legacy_buffer[ii].v = vertex.v;
-
-      legacy_buffer[ii].color = D3DCOLOR_COLORVALUE(vertex.color.r, vertex.color.g, vertex.color.b, vertex.color.a);
+      legacy_buffer = (uint8_t *)al_malloc(needed_size);
+      legacy_buffer_size = needed_size;
+   } else if (needed_size > legacy_buffer_size) {
+      size_t new_size = needed_size * 1.5;
+      legacy_buffer = (uint8_t *)al_realloc(legacy_buffer, new_size);
+      legacy_buffer_size = new_size;
    }
 
-   if(loop)
-      legacy_buffer[num_vertices] = legacy_buffer[0];
+   if (pp) {
+      ALLEGRO_VERTEX *buffer = (ALLEGRO_VERTEX *)legacy_buffer;
+      for(ii = 0; ii < num_vertices; ii++) {
+         if(indices)
+            buffer[ii] = vtx[indices[ii]];
+         else
+            buffer[ii] = vtx[ii];
+      }
+      if(loop)
+         buffer[num_vertices] = buffer[0];
+   }
+   else {
+      LEGACY_VERTEX *buffer = (LEGACY_VERTEX *)legacy_buffer;
+      for(ii = 0; ii < num_vertices; ii++) {
+         ALLEGRO_VERTEX vertex;
+
+         if(indices)
+            vertex = vtx[indices[ii]];
+         else
+            vertex = vtx[ii];
+
+         buffer[ii].x = vertex.x;
+         buffer[ii].y = vertex.y;
+         buffer[ii].z = vertex.z;
+
+         buffer[ii].u = vertex.u;
+         buffer[ii].v = vertex.v;
+
+         buffer[ii].color = D3DCOLOR_COLORVALUE(vertex.color.r, vertex.color.g, vertex.color.b, vertex.color.a);
+      }
+      if(loop)
+         buffer[num_vertices] = buffer[0];
+   }
 
    return legacy_buffer;
 }
@@ -262,9 +301,10 @@ struct D3D_STATE
 static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL* decl, ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, DISPLAY_LOCAL_DATA data)
 {
    D3D_STATE state;
-   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)(target->display);
+   ALLEGRO_DISPLAY *disp = _al_get_bitmap_display(target);
+   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)disp;
 
-   if (!(target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
+   if (!(disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
       IDirect3DPixelShader9* old_pix_shader;
       device->GetVertexShader(&state.old_vtx_shader);
       device->GetPixelShader(&old_pix_shader);
@@ -289,7 +329,7 @@ static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL
    }
 
    /* Set the vertex declarations */
-   if(is_legacy_card()) {
+   if(is_legacy_card() && !(disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
       device->SetFVF(A5V_LEGACY_FVF);
    } else {
       if(decl) {
@@ -299,7 +339,7 @@ static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL
       }
    }
 
-   if(!state.old_vtx_shader || (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
+   if(!state.old_vtx_shader || (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
       /* Set up the texture */
       if (texture) {
          LPDIRECT3DTEXTURE9 d3d_texture;
@@ -333,7 +373,7 @@ static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL
          mat[2][1] = (float)tex_y / desc.Height;
          
 
-         if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+         if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
 #ifdef ALLEGRO_CFG_SHADER_HLSL
             d3d_disp->effect->SetMatrix(ALLEGRO_SHADER_VAR_TEX_MATRIX, (D3DXMATRIX *)mat);
             d3d_disp->effect->SetBool(ALLEGRO_SHADER_VAR_USE_TEX_MATRIX, true);
@@ -354,7 +394,11 @@ static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL
          device->SetTexture(0, d3d_texture);
 
       } else {
-         device->SetTexture(0, NULL);
+         /* Don't unbind the texture here if shaders are used, since the user may
+          * have set the 0'th texture unit manually via the shader API. */
+         if (!(disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
+            device->SetTexture(0, NULL);
+         }
       }
    }
 
@@ -365,19 +409,20 @@ static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL
    device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
 
    if (texture) {
-      if (texture->flags & ALLEGRO_MIN_LINEAR) {
+      int texture_flags = al_get_bitmap_flags(texture);
+      if (texture_flags & ALLEGRO_MIN_LINEAR) {
          device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
       }
       else {
          device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
       }
-      if (texture->flags & ALLEGRO_MAG_LINEAR) {
+      if (texture_flags & ALLEGRO_MAG_LINEAR) {
          device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
       }
       else {
          device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
       }
-      if (texture->flags & ALLEGRO_MIPMAP) {
+      if (texture_flags & ALLEGRO_MIPMAP) {
          device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
       }
       else {
@@ -390,10 +435,11 @@ static D3D_STATE setup_state(LPDIRECT3DDEVICE9 device, const ALLEGRO_VERTEX_DECL
 
 static void revert_state(D3D_STATE state, LPDIRECT3DDEVICE9 device, ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture)
 {
-   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)(target->display);
+   ALLEGRO_DISPLAY *disp = _al_get_bitmap_display(target);
+   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)disp;
    (void)d3d_disp;
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-   if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+   if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
       d3d_disp->effect->End();
       d3d_disp->effect->SetBool(ALLEGRO_SHADER_VAR_USE_TEX_MATRIX, false);
       d3d_disp->effect->SetBool(ALLEGRO_SHADER_VAR_USE_TEX, false);
@@ -407,7 +453,7 @@ static void revert_state(D3D_STATE state, LPDIRECT3DDEVICE9 device, ALLEGRO_BITM
       device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, state.old_ttf_state);
    }
 
-   if (!(target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
+   if (!(disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
       if(!state.old_vtx_shader)
          device->SetVertexShader(0);
    }
@@ -421,18 +467,24 @@ static int draw_prim_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture,
    int num_primitives = 0;
    LPDIRECT3DDEVICE9 device;
    int min_idx = 0, max_idx = num_vtx - 1;
-   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)(target->display);
+   ALLEGRO_DISPLAY *disp = _al_get_bitmap_display(target);
+   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)disp;
    UINT required_passes = 1;
    unsigned int i;
    D3D_STATE state;
    DISPLAY_LOCAL_DATA data;
    (void)d3d_disp;
 
-   if (al_is_d3d_device_lost(target->display)) {
+   if (al_is_d3d_device_lost(disp)) {
       return 0;
    }
 
-   stride = is_legacy_card() ? (int)sizeof(LEGACY_VERTEX) : (decl ? decl->stride : (int)sizeof(ALLEGRO_VERTEX));
+   if (is_legacy_card() && !(disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
+      stride = (int)sizeof(LEGACY_VERTEX);
+   }
+   else {
+      stride = (decl ? decl->stride : (int)sizeof(ALLEGRO_VERTEX));
+   }
 
    /* Check for early exit */
    if((is_legacy_card() && decl) || (decl && decl->d3d_decl == 0)) {
@@ -459,27 +511,28 @@ static int draw_prim_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture,
       }
    }
 
-   device = al_get_d3d_device(target->display);
+   device = al_get_d3d_device(disp);
 
-   data = get_display_local_data(target->display);
+   data = get_display_local_data(disp);
 
    state = setup_state(device, decl, target, texture, data);
 
    /* Convert vertices for legacy cards */
    if(is_legacy_card()) {
       al_lock_mutex(d3d_mutex);
-      vtx = convert_to_legacy_vertices(vtx, num_vtx, indices, type == ALLEGRO_PRIM_LINE_LOOP);
+      vtx = convert_to_legacy_vertices(vtx, num_vtx, indices, type == ALLEGRO_PRIM_LINE_LOOP,
+         disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE);
    }
 
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-   if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+   if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
       d3d_disp->effect->Begin(&required_passes, 0);
    }
 #endif
 
    for (i = 0; i < required_passes; i++) {
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-      if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+      if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
          d3d_disp->effect->BeginPass(i);
       }
 #endif
@@ -593,7 +646,7 @@ static int draw_prim_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture,
       }
       
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-      if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+      if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
          d3d_disp->effect->EndPass();
       }
 #endif
@@ -650,14 +703,15 @@ static int draw_buffer_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, ALLE
    int num_primitives = 0;
    int num_vtx = end - start;
    LPDIRECT3DDEVICE9 device;
-   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)(target->display);
+   ALLEGRO_DISPLAY *disp = _al_get_bitmap_display(target);
+   ALLEGRO_DISPLAY_D3D *d3d_disp = (ALLEGRO_DISPLAY_D3D *)disp;
    UINT required_passes = 1;
    unsigned int i;
    D3D_STATE state;
    DISPLAY_LOCAL_DATA data;
    (void)d3d_disp;
 
-   if (al_is_d3d_device_lost(target->display)) {
+   if (al_is_d3d_device_lost(disp)) {
       return 0;
    }
 
@@ -666,9 +720,9 @@ static int draw_buffer_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, ALLE
       return _al_draw_buffer_common_soft(vertex_buffer, texture, index_buffer, start, end, type);
    }
 
-   device = al_get_d3d_device(target->display);
+   device = al_get_d3d_device(disp);
 
-   data = get_display_local_data(target->display);
+   data = get_display_local_data(disp);
 
    state = setup_state(device, vertex_buffer->decl, target, texture, data);
 
@@ -679,14 +733,14 @@ static int draw_buffer_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, ALLE
    }
 
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-   if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+   if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
       d3d_disp->effect->Begin(&required_passes, 0);
    }
 #endif
 
    for (i = 0; i < required_passes; i++) {
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-      if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+      if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
          d3d_disp->effect->BeginPass(i);
       }
 #endif
@@ -783,7 +837,7 @@ static int draw_buffer_raw(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, ALLE
       }
 
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-      if (target->display->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
+      if (disp->flags & ALLEGRO_PROGRAMMABLE_PIPELINE) {
          d3d_disp->effect->EndPass();
       }
 #endif
@@ -978,8 +1032,10 @@ bool _al_create_vertex_buffer_directx(ALLEGRO_VERTEX_BUFFER* buf, const void* in
    void* locked_memory;
 
    /* There's just no point */
-   if (is_legacy_card())
+   if (is_legacy_card()) {
+      ALLEGRO_WARN("Cannot create vertex buffer for a legacy card.\n");
       return false;
+   }
 
    device = al_get_d3d_device(al_get_current_display());
 
@@ -990,8 +1046,10 @@ bool _al_create_vertex_buffer_directx(ALLEGRO_VERTEX_BUFFER* buf, const void* in
 
    res = device->CreateVertexBuffer(stride * num_vertices, !(flags & ALLEGRO_PRIM_BUFFER_READWRITE) ? D3DUSAGE_WRITEONLY : 0,
                                     fvf, D3DPOOL_MANAGED, &d3d_vbuff, 0);
-   if (res != D3D_OK)
+   if (res != D3D_OK) {
+      ALLEGRO_WARN("CreateVertexBuffer failed: %ld.\n", res);
       return false;
+   }
 
    if (initial_data != NULL) {
       d3d_vbuff->Lock(0, 0, &locked_memory, 0);
@@ -1021,15 +1079,19 @@ bool _al_create_index_buffer_directx(ALLEGRO_INDEX_BUFFER* buf, const void* init
    void* locked_memory;
 
    /* There's just no point */
-   if (is_legacy_card())
+   if (is_legacy_card()) {
+      ALLEGRO_WARN("Cannot create index buffer for a legacy card.\n");
       return false;
+   }
 
    device = al_get_d3d_device(al_get_current_display());
 
    res = device->CreateIndexBuffer(num_indices * buf->index_size, !(flags & ALLEGRO_PRIM_BUFFER_READWRITE) ? D3DUSAGE_WRITEONLY : 0,
                                    buf->index_size == 4 ? D3DFMT_INDEX32 : D3DFMT_INDEX16, D3DPOOL_MANAGED, &d3d_ibuff, 0);
-   if (res != D3D_OK)
+   if (res != D3D_OK) {
+      ALLEGRO_WARN("CreateIndexBuffer failed: %ld.\n", res);
       return false;
+   }
 
    if (initial_data != NULL) {
       d3d_ibuff->Lock(0, 0, &locked_memory, 0);
@@ -1075,8 +1137,10 @@ void* _al_lock_vertex_buffer_directx(ALLEGRO_VERTEX_BUFFER* buf)
    HRESULT res;
 
    res = ((IDirect3DVertexBuffer9*)buf->common.handle)->Lock((UINT)buf->common.lock_offset, (UINT)buf->common.lock_length, &buf->common.locked_memory, flags);
-   if (res != D3D_OK)
+   if (res != D3D_OK) {
+      ALLEGRO_WARN("Locking vertex buffer failed: %ld.\n", res);
       return 0;
+   }
 
    return buf->common.locked_memory;
 #else
@@ -1093,8 +1157,11 @@ void* _al_lock_index_buffer_directx(ALLEGRO_INDEX_BUFFER* buf)
    HRESULT res;
 
    res = ((IDirect3DIndexBuffer9*)buf->common.handle)->Lock((UINT)buf->common.lock_offset, (UINT)buf->common.lock_length, &buf->common.locked_memory, flags);
-   if (res != D3D_OK)
+
+   if (res != D3D_OK) {
+      ALLEGRO_WARN("Locking index buffer failed: %ld.\n", res);
       return 0;
+   }
 
    return buf->common.locked_memory;
 #else

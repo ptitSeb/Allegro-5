@@ -7,7 +7,7 @@
 
 #include "common.c"
 
-int main(int argc, const char *argv[])
+int main(int argc, char **argv)
 {
     const char *filename;
     ALLEGRO_DISPLAY *display;
@@ -41,6 +41,7 @@ int main(int argc, const char *argv[])
 
     al_init_image_addon();
     al_init_font_addon();
+    init_platform_specific();
 
     display = al_create_display(640, 480);
     if (!display) {

@@ -9,7 +9,7 @@ set_our_header_properties(${TTF_INCLUDE_FILES})
 
 configure_file(
     allegro5/internal/aintern_ttf_cfg.h.cmake
-    ${CMAKE_BINARY_DIR}/include/allegro5/internal/aintern_ttf_cfg.h
+    ${PROJECT_BINARY_DIR}/include/allegro5/internal/aintern_ttf_cfg.h
     )
 
 set(TTF_LIBRARIES ${FREETYPE_LIBRARIES})
@@ -23,12 +23,11 @@ if(ZLIB_FOUND AND NOT IPHONE)
 endif()
 
 add_our_addon_library(allegro_ttf
+    AllegroTTF-${ALLEGRO_SOVERSION}
     "${TTF_SOURCES};${TTF_INCLUDE_FILES}"
     "-DALLEGRO_TTF_SRC"
     "${FONT_LINK_WITH};${TTF_LIBRARIES}"
     )
-
-set_our_framework_properties(allegro_ttf AllegroTTF-${ALLEGRO_SOVERSION})
 
 install_our_headers(${TTF_INCLUDE_FILES})
 

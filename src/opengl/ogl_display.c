@@ -1,5 +1,5 @@
 /*         ______   ___    ___
- *        /\  _  \ /\_ \  /\_ \ 
+ *        /\  _  \ /\_ \  /\_ \
  *        \ \ \L\ \\//\ \ \//\ \      __     __   _ __   ___ 
  *         \ \  __ \ \ \ \  \ \ \   /'__`\ /'_ `\/\`'__\/ __`\
  *          \ \ \/\ \ \_\ \_ \_\ \_/\  __//\ \L\ \ \ \//\ \L\ \
@@ -38,16 +38,20 @@ void _al_ogl_setup_gl(ALLEGRO_DISPLAY *d)
 {
    ALLEGRO_OGL_EXTRAS *ogl = d->ogl_extras;
 
-   glViewport(0, 0, d->w, d->h);
-
-   al_identity_transform(&d->proj_transform);
-   al_orthographic_transform(&d->proj_transform, 0, 0, -1, d->w, d->h, 1);
-   d->vt->set_projection(d);
-
-   if (ogl->backbuffer)
+   if (ogl->backbuffer) {
+      ALLEGRO_BITMAP *target = al_get_target_bitmap();
       _al_ogl_resize_backbuffer(ogl->backbuffer, d->w, d->h);
-   else
+      /* If we are currently targetting the backbuffer, we need to update the
+       * transformations. */
+      if (target && (target == ogl->backbuffer ||
+                     target->parent == ogl->backbuffer)) {
+         /* vt should be set at this point, but doesn't hurt to check */
+         ASSERT(d->vt);
+         d->vt->update_transformation(d, target);
+      }
+   } else {
       ogl->backbuffer = _al_ogl_create_backbuffer(d);
+   }
 }
 
 
@@ -60,13 +64,24 @@ void _al_ogl_set_target_bitmap(ALLEGRO_DISPLAY *display, ALLEGRO_BITMAP *bitmap)
    /* if either this bitmap or its parent (in the case of subbitmaps)
     * is locked then don't do anything
     */
-   if (!(bitmap->locked ||
-        (bitmap->parent && bitmap->parent->locked))) {
-      _al_ogl_setup_fbo(display, bitmap);
-      if (display->ogl_extras->opengl_target == target) {
-         _al_ogl_setup_bitmap_clipping(bitmap);
-      }
+   if (bitmap->locked)
+      return;
+   if (bitmap->parent && bitmap->parent->locked)
+      return;
+
+   _al_ogl_setup_fbo(display, bitmap);
+   if (display->ogl_extras->opengl_target == target) {
+      _al_ogl_setup_bitmap_clipping(bitmap);
    }
+}
+
+
+void _al_ogl_unset_target_bitmap(ALLEGRO_DISPLAY *display,
+   ALLEGRO_BITMAP *target)
+{
+   if (!target)
+      return;
+   _al_ogl_finalize_fbo(display, target);
 }
 
 
@@ -81,7 +96,8 @@ void al_set_current_opengl_context(ALLEGRO_DISPLAY *display)
 
    if (display) {
       ALLEGRO_BITMAP *bmp = al_get_target_bitmap();
-      if (bmp && bmp->display && bmp->display != display) {
+      if (bmp && _al_get_bitmap_display(bmp) &&
+            _al_get_bitmap_display(bmp) != display) {
          al_set_target_bitmap(NULL);
       }
    }
@@ -152,7 +168,7 @@ bool _al_ogl_resize_backbuffer(ALLEGRO_BITMAP *b, int w, int h)
    int pitch;
    ALLEGRO_BITMAP_EXTRA_OPENGL *extra = b->extra;
          
-   pitch = w * al_get_pixel_size(b->format);
+   pitch = w * al_get_pixel_size(al_get_bitmap_format(b));
 
    b->w = w;
    b->h = h;
@@ -161,22 +177,15 @@ bool _al_ogl_resize_backbuffer(ALLEGRO_BITMAP *b, int w, int h)
    b->ct = 0;
    b->cr_excl = w;
    b->cb_excl = h;
+   al_identity_transform(&b->proj_transform);
+   al_orthographic_transform(&b->proj_transform, 0, 0, -1.0, w, h, 1.0);
 
    /* There is no texture associated with the backbuffer so no need to care
     * about texture size limitations. */
    extra->true_w = w;
    extra->true_h = h;
 
-   if (!IS_IPHONE) {
-      b->memory = NULL;
-   }
-   else {
-      /* iPhone port still expects the buffer to be present. */
-      /* FIXME: lazily manage memory */
-      size_t bytes = pitch * h;
-      al_free(b->memory);
-      b->memory = al_calloc(1, bytes);
-   }
+   b->memory = NULL;
 
    return true;
 }
@@ -186,12 +195,9 @@ ALLEGRO_BITMAP* _al_ogl_create_backbuffer(ALLEGRO_DISPLAY *disp)
 {
    ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_backbuffer;
    ALLEGRO_BITMAP *backbuffer;
-   ALLEGRO_STATE backup;
    int format;
 
    ALLEGRO_DEBUG("Creating backbuffer\n");
-
-   al_store_state(&backup, ALLEGRO_STATE_NEW_BITMAP_PARAMETERS);
 
    // FIXME: _al_deduce_color_format would work fine if the display paramerers
    // are filled in, for OpenGL ES
@@ -223,12 +229,9 @@ ALLEGRO_BITMAP* _al_ogl_create_backbuffer(ALLEGRO_DISPLAY *disp)
    disp->backbuffer_format = format;
 
    ALLEGRO_DEBUG("Creating backbuffer bitmap\n");
-   al_set_new_bitmap_format(format);
    /* Using ALLEGRO_NO_PRESERVE_TEXTURE prevents extra memory being allocated */
-   al_set_new_bitmap_flags(ALLEGRO_VIDEO_BITMAP | ALLEGRO_NO_PRESERVE_TEXTURE);
-   backbuffer = _al_ogl_create_bitmap(disp, disp->w, disp->h);
-   al_restore_state(&backup);
-
+   backbuffer = _al_ogl_create_bitmap(disp, disp->w, disp->h,
+      format, ALLEGRO_VIDEO_BITMAP | ALLEGRO_NO_PRESERVE_TEXTURE);
    if (!backbuffer) {
       ALLEGRO_DEBUG("Backbuffer bitmap creation failed.\n");
       return NULL;
@@ -240,16 +243,19 @@ ALLEGRO_BITMAP* _al_ogl_create_backbuffer(ALLEGRO_DISPLAY *disp)
    backbuffer->ct = 0;
    backbuffer->cr_excl = disp->w;
    backbuffer->cb_excl = disp->h;
+   al_identity_transform(&backbuffer->transform);
+   al_identity_transform(&backbuffer->proj_transform);
+   al_orthographic_transform(&backbuffer->proj_transform, 0, 0, -1.0, disp->w, disp->h, 1.0);
 
    ALLEGRO_TRACE_CHANNEL_LEVEL("display", 1)(
       "Created backbuffer bitmap (actual format: %s)\n",
-      _al_pixel_format_name(backbuffer->format));
+      _al_pixel_format_name(al_get_bitmap_format(backbuffer)));
 
    ogl_backbuffer = backbuffer->extra;
+   ogl_backbuffer->true_w = disp->w;
+   ogl_backbuffer->true_h = disp->h;
    ogl_backbuffer->is_backbuffer = 1;
-   backbuffer->display = disp;
-
-   al_identity_transform(&disp->view_transform);
+   backbuffer->_display = disp;
 
    return backbuffer;
 }

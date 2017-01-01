@@ -27,13 +27,16 @@ static void draw_mouse_button(int but, bool down)
    }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *cursor;
    ALLEGRO_MOUSE_STATE msestate;
    ALLEGRO_KEYBOARD_STATE kbdstate;
    int i;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -43,6 +46,7 @@ int main(void)
    al_install_mouse();
    al_install_keyboard();
    al_init_image_addon();
+   init_platform_specific();
 
    display = al_create_display(640, 480);
    if (!display) {

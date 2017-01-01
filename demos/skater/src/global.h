@@ -5,14 +5,11 @@
 #include <stdio.h>
 #include <math.h>
 #include <allegro5/allegro.h>
-#include <allegro5/allegro_font.h>
-#include <allegro5/allegro_color.h>
-#include <allegro5/allegro_audio.h>
-#include <allegro5/allegro_primitives.h>
-#include <allegro5/allegro_image.h>
-#include <allegro5/allegro_font.h>
-#include <allegro5/allegro_ttf.h>
 #include <allegro5/allegro_acodec.h>
+#include <allegro5/allegro_audio.h>
+#include <allegro5/allegro_font.h>
+#include <allegro5/allegro_image.h>
+#include <allegro5/allegro_primitives.h>
 #undef mouse_event
 
 #include "defines.h"
@@ -208,8 +205,6 @@ void set_config_int(ALLEGRO_CONFIG *cfg, const char *section, const char *name,
 		    int val);
 
 int my_stricmp(const char *s1, const char *s2);
-
-void allegro_message(const char *fmt, ...);
 
 
 #endif				/* __DEMO_GLOBAL_H__ */

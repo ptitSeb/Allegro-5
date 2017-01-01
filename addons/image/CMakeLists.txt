@@ -1,6 +1,6 @@
 option(WANT_NATIVE_IMAGE_LOADER "Enable the native platform image loader (if available)" on)
 
-set(IMAGE_SOURCES bmp.c iio.c pcx.c tga.c)
+set(IMAGE_SOURCES bmp.c iio.c pcx.c tga.c dds.c identify.c)
 set(IMAGE_INCLUDE_FILES allegro5/allegro_image.h)
 
 set_our_header_properties(${IMAGE_INCLUDE_FILES})
@@ -25,7 +25,7 @@ if(WANT_NATIVE_IMAGE_LOADER)
             set(CMAKE_REQUIRED_DEFINITIONS -DGDIPLUS_LOWERCASE=${GDIPLUS_LOWERCASE})
             set(CMAKE_REQUIRED_INCLUDES ${GDIPLUS_INCLUDE_DIR})
             set(CMAKE_REQUIRED_LIBRARIES ${GDIPLUS_LIBRARY})
-            check_cxx_source_compiles("
+            run_cxx_compile_test("
                 #include <windows.h>
                 #include <objidl.h>
                 #if GDIPLUS_LOWERCASE
@@ -100,7 +100,7 @@ if(WANT_IMAGE_JPG AND NOT ALLEGRO_CFG_IIO_SUPPORT_JPG)
     find_package(JPEG)
     if(JPEG_FOUND AND MINGW)
         set(CMAKE_REQUIRED_INCLUDES ${JPEG_INCLUDE_DIR})
-        check_c_source_compiles("
+        run_c_compile_test("
             #include <stdio.h>
             #include <windows.h>
             #include <jpeglib.h>
@@ -136,16 +136,15 @@ endif(WANT_IMAGE_JPG AND NOT ALLEGRO_CFG_IIO_SUPPORT_JPG)
 
 configure_file(
     allegro5/internal/aintern_image_cfg.h.cmake
-    ${CMAKE_BINARY_DIR}/include/allegro5/internal/aintern_image_cfg.h
+    ${PROJECT_BINARY_DIR}/include/allegro5/internal/aintern_image_cfg.h
     )
 
 add_our_addon_library(allegro_image
+    AllegroImage-${ALLEGRO_SOVERSION}
     "${IMAGE_SOURCES};${IMAGE_INCLUDE_FILES}"
     "-DALLEGRO_IIO_SRC"
     "${ALLEGRO_LINK_WITH};${IMAGE_LIBRARIES}"
     )
-
-set_our_framework_properties(allegro_image AllegroImage-${ALLEGRO_SOVERSION})
 
 install_our_headers(${IMAGE_INCLUDE_FILES})
 

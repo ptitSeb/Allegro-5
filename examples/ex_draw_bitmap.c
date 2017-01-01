@@ -6,6 +6,8 @@
 
 #include "common.c"
 
+ALLEGRO_DEBUG_CHANNEL("main")
+
 #define FPS 60
 #define MAX_SPRITES 1024
 
@@ -14,6 +16,7 @@ typedef struct Sprite {
 } Sprite;
 
 char const *text[] = {
+   "H - toggle held drawing",
    "Space - toggle use of textures",
    "B - toggle alpha blending",
    "Left/Right - change bitmap size",
@@ -27,10 +30,13 @@ struct Example {
    int blending;
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *mysha, *bitmap;
+   bool hold_bitmap_drawing;
    int bitmap_size;
    int sprite_count;
    bool show_help;
    ALLEGRO_FONT *font;
+
+   int t;
 
    ALLEGRO_COLOR white;
    ALLEGRO_COLOR half_white;
@@ -162,6 +168,12 @@ static void update(void)
    int i;
    for (i = 0; i < example.sprite_count; i++)
       sprite_update(example.sprites + i);
+
+   example.t++;
+   if (example.t == 60) {
+      ALLEGRO_DEBUG("tick");
+      example.t = 0;
+   }
 }
 
 static void redraw(void)
@@ -190,15 +202,24 @@ static void redraw(void)
    else if (example.blending == 3)
       al_set_blender(ALLEGRO_ADD, ALLEGRO_ONE, ALLEGRO_ZERO);
 
+   if (example.hold_bitmap_drawing) {
+      al_hold_bitmap_drawing(true);
+   }
    for (i = 0; i < example.sprite_count; i++) {
       Sprite *s = example.sprites + i;
       al_draw_tinted_bitmap(example.bitmap, tint, s->x, s->y, 0);
    }
+   if (example.hold_bitmap_drawing) {
+      al_hold_bitmap_drawing(false);
+   }
 
    al_set_blender(ALLEGRO_ADD, ALLEGRO_ONE, ALLEGRO_INVERSE_ALPHA);
    if (example.show_help) {
-      for (i = 0; i < 5; i++)
-         al_draw_text(example.font, example.white, 0, h - 10 * fh + i * fh * 2 + fh * 0.5, 0, text[i]);
+      int dh = fh * 3.5;
+      for (i = 5; i >= 0; i--) {
+         al_draw_text(example.font, example.white, 0, h - dh, 0, text[i]);
+         dh += fh * 6;
+      }
    }
 
    al_draw_textf(example.font, example.white, 0, 0, 0, "count: %d",
@@ -218,7 +239,7 @@ static void redraw(void)
    
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_TIMER *timer;
    ALLEGRO_EVENT_QUEUE *queue;
@@ -228,6 +249,10 @@ int main(void)
    bool need_redraw = true;
    bool background = false;
    example.show_help = true;
+   example.hold_bitmap_drawing = false;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Failed to init Allegro.\n");
@@ -238,6 +263,7 @@ int main(void)
    }
 
    al_init_font_addon();
+   init_platform_specific();
 
    al_get_num_video_adapters();
    
@@ -264,9 +290,11 @@ int main(void)
       abort_example("Error installing mouse.\n");
    }
 
-   example.font = al_load_font("data/fixed_font.tga", 0, 0);
+   al_install_touch_input();
+
+   example.font = al_create_builtin_font();
    if (!example.font) {
-      abort_example("Error loading data/fixed_font.tga\n");
+      abort_example("Error creating builtin font\n");
    }
 
    example.mysha = al_load_bitmap("data/mysha256x256.png");
@@ -341,6 +369,9 @@ int main(void)
                if (example.blending == 4)
                   example.blending = 0;
             }
+            else if (event.keyboard.keycode == ALLEGRO_KEY_H) {
+               example.hold_bitmap_drawing ^= 1;
+            }
             break;
 
          case ALLEGRO_EVENT_DISPLAY_CLOSE:
@@ -356,6 +387,7 @@ int main(void)
          
          case ALLEGRO_EVENT_DISPLAY_RESUME_DRAWING:
             background = false;
+            al_acknowledge_drawing_resume(event.display.source);
             break;
          
          case ALLEGRO_EVENT_DISPLAY_RESIZE:
@@ -381,8 +413,8 @@ int main(void)
          {
             int fh = al_get_font_line_height(example.font);
             
-            if (x < 80 && y >= h - fh * 10) {
-               int button = (y - (h - fh * 10)) / (fh * 2);
+            if (x < fh * 12 && y >= h - fh * 30) {
+               int button = (y - (h - fh * 30)) / (fh * 6);
                if (button == 0) {
                   example.use_memory_bitmaps ^= 1;
                   change_size(example.bitmap_size);
@@ -393,14 +425,14 @@ int main(void)
                      example.blending = 0;
                }
                if (button == 3) {
-                  if (x < 40)
+                  if (x < fh * 6)
                      remove_sprites(example.sprite_count / 2);
                   else
                      add_sprites(example.sprite_count);
                }
                if (button == 2) {
                   int s = example.bitmap_size * 2;
-                  if (x < 40)
+                  if (x < fh * 6)
                      s = example.bitmap_size / 2;
                   change_size(s);
                }

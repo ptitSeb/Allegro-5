@@ -20,14 +20,15 @@ typedef struct ALLEGRO_FILE ALLEGRO_FILE;
 typedef struct ALLEGRO_FILE_INTERFACE
 {
    AL_METHOD(void *,  fi_fopen, (const char *path, const char *mode));
-   AL_METHOD(void,    fi_fclose, (ALLEGRO_FILE *handle));
+   AL_METHOD(bool,    fi_fclose, (ALLEGRO_FILE *handle));
    AL_METHOD(size_t,  fi_fread, (ALLEGRO_FILE *f, void *ptr, size_t size));
    AL_METHOD(size_t,  fi_fwrite, (ALLEGRO_FILE *f, const void *ptr, size_t size));
    AL_METHOD(bool,    fi_fflush, (ALLEGRO_FILE *f));
    AL_METHOD(int64_t, fi_ftell, (ALLEGRO_FILE *f));
    AL_METHOD(bool,    fi_fseek, (ALLEGRO_FILE *f, int64_t offset, int whence));
    AL_METHOD(bool,    fi_feof, (ALLEGRO_FILE *f));
-   AL_METHOD(bool,    fi_ferror, (ALLEGRO_FILE *f));
+   AL_METHOD(int,     fi_ferror, (ALLEGRO_FILE *f));
+   AL_METHOD(const char *, fi_ferrmsg, (ALLEGRO_FILE *f));
    AL_METHOD(void,    fi_fclearerr, (ALLEGRO_FILE *f));
    AL_METHOD(int,     fi_fungetc, (ALLEGRO_FILE *f, int c));
    AL_METHOD(off_t,   fi_fsize, (ALLEGRO_FILE *f));
@@ -48,14 +49,15 @@ typedef enum ALLEGRO_SEEK
 AL_FUNC(ALLEGRO_FILE*, al_fopen, (const char *path, const char *mode));
 AL_FUNC(ALLEGRO_FILE*, al_fopen_interface, (const ALLEGRO_FILE_INTERFACE *vt, const char *path, const char *mode));
 AL_FUNC(ALLEGRO_FILE*, al_create_file_handle, (const ALLEGRO_FILE_INTERFACE *vt, void *userdata));
-AL_FUNC(void, al_fclose, (ALLEGRO_FILE *f));
+AL_FUNC(bool, al_fclose, (ALLEGRO_FILE *f));
 AL_FUNC(size_t, al_fread, (ALLEGRO_FILE *f, void *ptr, size_t size));
 AL_FUNC(size_t, al_fwrite, (ALLEGRO_FILE *f, const void *ptr, size_t size));
 AL_FUNC(bool, al_fflush, (ALLEGRO_FILE *f));
 AL_FUNC(int64_t, al_ftell, (ALLEGRO_FILE *f));
 AL_FUNC(bool, al_fseek, (ALLEGRO_FILE *f, int64_t offset, int whence));
 AL_FUNC(bool, al_feof, (ALLEGRO_FILE *f));
-AL_FUNC(bool, al_ferror, (ALLEGRO_FILE *f));
+AL_FUNC(int, al_ferror, (ALLEGRO_FILE *f));
+AL_FUNC(const char *, al_ferrmsg, (ALLEGRO_FILE *f));
 AL_FUNC(void, al_fclearerr, (ALLEGRO_FILE *f));
 AL_FUNC(int, al_fungetc, (ALLEGRO_FILE *f, int c));
 AL_FUNC(int64_t, al_fsize, (ALLEGRO_FILE *f));
@@ -74,6 +76,8 @@ AL_FUNC(size_t, al_fwrite32be, (ALLEGRO_FILE *f, int32_t l));
 AL_FUNC(char*, al_fgets, (ALLEGRO_FILE *f, char * const p, size_t max));
 AL_FUNC(ALLEGRO_USTR *, al_fget_ustr, (ALLEGRO_FILE *f));
 AL_FUNC(int, al_fputs, (ALLEGRO_FILE *f, const char *p));
+AL_FUNC(int, al_fprintf, (ALLEGRO_FILE *f, const char *format, ...));
+AL_FUNC(int, al_vfprintf, (ALLEGRO_FILE *f, const char* format, va_list args));
 
 /* Specific to stdio backend. */
 AL_FUNC(ALLEGRO_FILE*, al_fopen_fd, (int fd, const char *mode));

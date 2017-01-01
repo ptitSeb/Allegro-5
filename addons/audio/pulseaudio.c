@@ -40,7 +40,11 @@ typedef struct PULSEAUDIO_VOICE
    unsigned int frame_size_in_bytes;
 
    ALLEGRO_THREAD *poll_thread;
-   ALLEGRO_MUTEX *status_mutex;
+   /* status_cond and status are protected by voice->mutex.
+    * Using another mutex introduces a deadlock if waiting for a change in
+    * status (while holding voice->mutex, acquired by a higher layer)
+    * and the background thread tries to acquire voice->mutex as well.
+    */
    ALLEGRO_COND *status_cond;
    enum PULSEAUDIO_VOICE_STATUS status;
 
@@ -157,11 +161,11 @@ static void *pulseaudio_update(ALLEGRO_THREAD *self, void *data)
    for (;;) {
       enum PULSEAUDIO_VOICE_STATUS status;
 
-      al_lock_mutex(pv->status_mutex);
+      al_lock_mutex(voice->mutex);
       while ((status = pv->status) == PV_IDLE) {
-         al_wait_cond(pv->status_cond, pv->status_mutex);
+         al_wait_cond(pv->status_cond, voice->mutex);
       }
-      al_unlock_mutex(pv->status_mutex);
+      al_unlock_mutex(voice->mutex);
 
       if (status == PV_JOIN) {
          break;
@@ -171,7 +175,7 @@ static void *pulseaudio_update(ALLEGRO_THREAD *self, void *data)
          unsigned int frames = pv->buffer_size_in_frames;
          if (voice->is_streaming) { 
             // streaming audio           
-            const void *data = _al_voice_update(voice, &frames);
+            const void *data = _al_voice_update(voice, voice->mutex, &frames);
             if (data) {
                pa_simple_write(pv->s, data,
                   frames * pv->frame_size_in_bytes, NULL);
@@ -188,10 +192,10 @@ static void *pulseaudio_update(ALLEGRO_THREAD *self, void *data)
                pv->buffer = voice->attached_stream->spl_data.buffer.ptr;
                voice->attached_stream->pos = 0;
                if (voice->attached_stream->loop == ALLEGRO_PLAYMODE_ONCE) {
-                  al_lock_mutex(pv->status_mutex);
+                  al_lock_mutex(voice->mutex);
                   pv->status = PV_STOPPING;
                   al_broadcast_cond(pv->status_cond);
-                  al_unlock_mutex(pv->status_mutex);
+                  al_unlock_mutex(voice->mutex);
                }
             }
             else {
@@ -203,11 +207,11 @@ static void *pulseaudio_update(ALLEGRO_THREAD *self, void *data)
          }
       }
       else if (status == PV_STOPPING) {
-         pa_simple_flush(pv->s, NULL);
-         al_lock_mutex(pv->status_mutex);
+         pa_simple_drain(pv->s, NULL);
+         al_lock_mutex(voice->mutex);
          pv->status = PV_IDLE;
          al_broadcast_cond(pv->status_cond);
-         al_unlock_mutex(pv->status_mutex);
+         al_unlock_mutex(voice->mutex);
       }
    }
 
@@ -241,7 +245,8 @@ static int pulseaudio_allocate_voice(ALLEGRO_VOICE *voice)
 
    ba.maxlength = 0x10000; // maximum length of buffer
    ba.tlength   = 0x2000;  // target length of buffer
-   ba.prebuf    = 0;       // minimum data size required before playback starts
+   ba.prebuf    = -1;      // minimum data size required before playback starts
+                           // set to -1 to work with the simple API.
    ba.minreq    = 0;       // minimum size of request 
    ba.fragsize  = -1;      // fragment size (recording)
 
@@ -268,7 +273,7 @@ static int pulseaudio_allocate_voice(ALLEGRO_VOICE *voice)
    pv->frame_size_in_bytes = ss.channels * al_get_audio_depth_size(voice->depth);
 
    pv->status = PV_IDLE;
-   pv->status_mutex = al_create_mutex();
+   //pv->status_mutex = al_create_mutex();
    pv->status_cond = al_create_cond();
    pv->buffer_mutex = al_create_mutex();
 
@@ -282,10 +287,10 @@ static void pulseaudio_deallocate_voice(ALLEGRO_VOICE *voice)
 {
    PULSEAUDIO_VOICE *pv = voice->extra;
 
-   al_lock_mutex(pv->status_mutex);
+   al_lock_mutex(voice->mutex);
    pv->status = PV_JOIN;
    al_broadcast_cond(pv->status_cond);
-   al_unlock_mutex(pv->status_mutex);
+   al_unlock_mutex(voice->mutex);
 
    /* We do NOT hold the voice mutex here, so this does NOT result in a
     * deadlock when the thread calls _al_voice_update.
@@ -293,7 +298,6 @@ static void pulseaudio_deallocate_voice(ALLEGRO_VOICE *voice)
    al_join_thread(pv->poll_thread, NULL);
    al_destroy_thread(pv->poll_thread);
 
-   al_destroy_mutex(pv->status_mutex);
    al_destroy_cond(pv->status_cond);
    al_destroy_mutex(pv->buffer_mutex);
 
@@ -330,7 +334,8 @@ static int pulseaudio_start_voice(ALLEGRO_VOICE *voice)
    PULSEAUDIO_VOICE *pv = voice->extra;   
    int ret;
 
-   al_lock_mutex(pv->status_mutex);
+   /* We hold the voice->mutex already. */
+
    if (pv->status == PV_IDLE) {
       pv->status = PV_PLAYING;
       al_broadcast_cond(pv->status_cond);
@@ -339,7 +344,6 @@ static int pulseaudio_start_voice(ALLEGRO_VOICE *voice)
    else {
       ret = 1;
    }
-   al_unlock_mutex(pv->status_mutex);
 
    return ret;
 }
@@ -348,7 +352,7 @@ static int pulseaudio_stop_voice(ALLEGRO_VOICE *voice)
 {
    PULSEAUDIO_VOICE *pv = voice->extra;
 
-   al_lock_mutex(pv->status_mutex);
+   /* We hold the voice->mutex already. */
 
    if (pv->status == PV_PLAYING) {
       pv->status = PV_STOPPING;
@@ -356,10 +360,8 @@ static int pulseaudio_stop_voice(ALLEGRO_VOICE *voice)
    }
 
    while (pv->status != PV_IDLE) {
-      al_wait_cond(pv->status_cond, pv->status_mutex);
+      al_wait_cond(pv->status_cond, voice->mutex);
    }
-
-   al_unlock_mutex(pv->status_mutex);
 
    return 0;
 }
@@ -367,13 +369,7 @@ static int pulseaudio_stop_voice(ALLEGRO_VOICE *voice)
 static bool pulseaudio_voice_is_playing(const ALLEGRO_VOICE *voice)
 {
    PULSEAUDIO_VOICE *pv = voice->extra;
-   enum PULSEAUDIO_VOICE_STATUS status;
-
-   al_lock_mutex(pv->status_mutex);
-   status = pv->status;
-   al_unlock_mutex(pv->status_mutex);
-
-   return (status == PV_PLAYING);
+   return (pv->status == PV_PLAYING);
 }
 
 static unsigned int pulseaudio_get_voice_position(const ALLEGRO_VOICE *voice)

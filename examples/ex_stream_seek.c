@@ -19,7 +19,7 @@ ALLEGRO_TIMER *timer;
 ALLEGRO_EVENT_QUEUE *queue;
 ALLEGRO_FONT *basic_font = NULL;
 ALLEGRO_AUDIO_STREAM *music_stream = NULL;
-char *stream_filename = NULL;
+const char *stream_filename = "data/welcome.wav";
 
 float slider_pos = 0.0;
 float loop_start, loop_end;
@@ -53,6 +53,8 @@ static void initialize(void)
    if (!al_reserve_samples(16)) {
       abort_example("Could not set up voice and mixer.\n");
    }
+
+   init_platform_specific();
 
    display = al_create_display(640, 228);
    if (!display) {
@@ -132,7 +134,7 @@ static void render(void)
 static void myexit(void)
 {
    bool playing;
-   playing = al_get_mixer_playing(al_get_default_mixer());
+   playing = al_get_audio_stream_playing(music_stream);
    if (playing && music_stream)
       al_drain_audio_stream(music_stream);
    al_destroy_audio_stream(music_stream);
@@ -188,9 +190,9 @@ static void event_handler(const ALLEGRO_EVENT * event)
          }
          else if (event->keyboard.keycode == ALLEGRO_KEY_SPACE) {
             bool playing;
-            playing = al_get_mixer_playing(al_get_default_mixer());
+            playing = al_get_audio_stream_playing(music_stream);
             playing = !playing;
-            al_set_mixer_playing(al_get_default_mixer(), playing);
+            al_set_audio_stream_playing(music_stream, playing);
          }
          else if (event->keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
             exiting = true;
@@ -217,22 +219,26 @@ static void event_handler(const ALLEGRO_EVENT * event)
          logic();
          render();
          break;
+
+      case ALLEGRO_EVENT_AUDIO_STREAM_FINISHED:
+         log_printf("Stream finished.\n");
+         break;
    }
 }
 
-int main(int argc, char * argv[])
+int main(int argc, char *argv[])
 {
    ALLEGRO_CONFIG *config;
    ALLEGRO_EVENT event;
    unsigned buffer_count;
    unsigned samples;
    const char *s;
+   ALLEGRO_PLAYMODE playmode = ALLEGRO_PLAYMODE_LOOP;
 
    initialize();
 
-   if (argc < 2) {
-      log_printf("This example needs to be run from the command line.\nUsage: %s {audio_files}\n", argv[0]);
-      goto done;
+   if (argc > 1) {
+      stream_filename = argv[1];
    }
 
    buffer_count = 0;
@@ -245,6 +251,14 @@ int main(int argc, char * argv[])
       if ((s = al_get_config_value(config, "", "samples"))) {
          samples = atoi(s);
       }
+      if ((s = al_get_config_value(config, "", "playmode"))) {
+         if (!strcmp(s, "loop")) {
+            playmode = ALLEGRO_PLAYMODE_LOOP;
+         }
+         else if (!strcmp(s, "once")) {
+            playmode = ALLEGRO_PLAYMODE_ONCE;
+         }
+      }
       al_destroy_config(config);
    }
    if (buffer_count == 0) {
@@ -254,17 +268,17 @@ int main(int argc, char * argv[])
       samples = 1024;
    }
 
-   stream_filename = argv[1];
    music_stream = al_load_audio_stream(stream_filename, buffer_count, samples);
    if (!music_stream) {
       abort_example("Stream error!\n");
    }
+   al_register_event_source(queue, al_get_audio_stream_event_source(music_stream));
 
    loop_start = 0.0;
    loop_end = al_get_audio_stream_length_secs(music_stream);
    al_set_audio_stream_loop_secs(music_stream, loop_start, loop_end);
 
-   al_set_audio_stream_playmode(music_stream, ALLEGRO_PLAYMODE_LOOP);
+   al_set_audio_stream_playmode(music_stream, playmode);
    al_attach_audio_stream_to_mixer(music_stream, al_get_default_mixer());
    al_start_timer(timer);
 
@@ -273,7 +287,6 @@ int main(int argc, char * argv[])
       event_handler(&event);
    }
 
-done:
    myexit();
    al_destroy_display(display);
    close_log(true);

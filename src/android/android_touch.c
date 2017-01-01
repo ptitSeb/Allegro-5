@@ -11,21 +11,44 @@
  *      Android family device touch input driver.
  *
  *      By Thomas Fjellstrom.
+ *
  *      Based on the iOS touch input driver by Michał Cichoń.
  *
  *      See readme.txt for copyright information.
  */
+
 #include "allegro5/allegro.h"
-#include "allegro5/internal/aintern_touch_input.h"
-#include "allegro5/internal/aintern_display.h"
 #include "allegro5/internal/aintern_android.h"
+#include "allegro5/internal/aintern_display.h"
+#include "allegro5/internal/aintern_touch_input.h"
+
+ALLEGRO_DEBUG_CHANNEL("android")
+
+
+/* forward declaration */
+static void android_touch_input_handle_cancel(int id, double timestamp,
+   float x, float y, bool primary, ALLEGRO_DISPLAY *disp);
+
 
 static ALLEGRO_TOUCH_INPUT_STATE touch_input_state;
 static ALLEGRO_MOUSE_STATE mouse_state;
 static ALLEGRO_TOUCH_INPUT touch_input;
 static bool installed = false;
 
-static void generate_touch_input_event(unsigned int type, double timestamp, int id, float x, float y, float dx, float dy, bool primary, ALLEGRO_DISPLAY *disp)
+
+static void reset_touch_input_state(void)
+{
+   int i;
+
+   for (i = 0; i < ALLEGRO_TOUCH_INPUT_MAX_TOUCH_COUNT; i++) {
+      touch_input_state.touches[i].id = -1;
+   }
+}
+
+
+static void generate_touch_input_event(unsigned int type, double timestamp,
+   int id, float x, float y, float dx, float dy, bool primary,
+   ALLEGRO_DISPLAY *disp)
 {
    ALLEGRO_EVENT event;
 
@@ -75,6 +98,8 @@ static void generate_touch_input_event(unsigned int type, double timestamp, int 
       else if (type == ALLEGRO_EVENT_TOUCH_END)
          mouse_state.buttons--;
 
+      mouse_state.pressure = mouse_state.buttons ? 1.0 : 0.0; /* TODO */
+
       _al_event_source_lock(&touch_input.mouse_emulation_es);
       if (want_mouse_emulation_event) {
 
@@ -100,7 +125,7 @@ static void generate_touch_input_event(unsigned int type, double timestamp, int 
          else {
             event.mouse.button = id;
          }
-         event.mouse.pressure  = 1.0;
+         event.mouse.pressure  = mouse_state.pressure;
    
          if (touch_input.mouse_emulation_mode != ALLEGRO_MOUSE_EMULATION_5_0_x) {
             al_set_mouse_xy(event.mouse.display, event.mouse.x, event.mouse.y);
@@ -118,7 +143,7 @@ static bool init_touch_input(void)
    if (installed)
       return false;
 
-   memset(&touch_input_state, 0, sizeof(touch_input_state));
+   reset_touch_input_state();
    memset(&mouse_state, 0, sizeof(mouse_state));
 
    _al_event_source_init(&touch_input.es);
@@ -136,7 +161,7 @@ static void exit_touch_input(void)
    if (!installed)
       return;
 
-   memset(&touch_input_state, 0, sizeof(touch_input_state));
+   reset_touch_input_state();
    memset(&mouse_state, 0, sizeof(mouse_state));
 
    _al_event_source_free(&touch_input.es);
@@ -171,7 +196,7 @@ static void set_mouse_emulation_mode(int mode)
          ALLEGRO_TOUCH_STATE* touch = touch_input_state.touches + i;
          
          if (touch->id > 0) {
-            _al_android_touch_input_handle_cancel(touch->id, al_get_time(),
+            android_touch_input_handle_cancel(touch->id, al_get_time(),
                touch->x, touch->y, touch->primary, touch->display);
          }
       }
@@ -181,12 +206,12 @@ static void set_mouse_emulation_mode(int mode)
 }
 
 
-static ALLEGRO_TOUCH_STATE* find_free_touch_state()
+static ALLEGRO_TOUCH_STATE* find_free_touch_state(void)
 {
    int i;
 
    for (i = 0; i < ALLEGRO_TOUCH_INPUT_MAX_TOUCH_COUNT; ++i)
-      if (touch_input_state.touches[i].id <= 0)
+      if (touch_input_state.touches[i].id < 0)
          return touch_input_state.touches + i;
 
    return NULL;
@@ -204,7 +229,9 @@ static ALLEGRO_TOUCH_STATE* find_touch_state_with_id(int id)
    return NULL;
 }
 
-void _al_android_touch_input_handle_begin(int id, double timestamp, float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
+
+static void android_touch_input_handle_begin(int id, double timestamp,
+   float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
 {
    ALLEGRO_TOUCH_STATE* state = find_free_touch_state();
    (void)primary;
@@ -223,11 +250,13 @@ void _al_android_touch_input_handle_begin(int id, double timestamp, float x, flo
    _al_event_source_unlock(&touch_input.es);
 
    generate_touch_input_event(ALLEGRO_EVENT_TOUCH_BEGIN, timestamp,
-      state->id, state->x, state->y, state->dx, state->dy, state->primary, disp);
+      state->id, state->x, state->y, state->dx, state->dy, state->primary,
+      disp);
 }
 
 
-void _al_android_touch_input_handle_end(int id, double timestamp, float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
+static void android_touch_input_handle_end(int id, double timestamp,
+   float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
 {
    ALLEGRO_TOUCH_STATE* state = find_touch_state_with_id(id);
    (void)primary;
@@ -243,15 +272,17 @@ void _al_android_touch_input_handle_end(int id, double timestamp, float x, float
    _al_event_source_unlock(&touch_input.es);
 
    generate_touch_input_event(ALLEGRO_EVENT_TOUCH_END, timestamp,
-      state->id, state->x, state->y, state->dx, state->dy, state->primary, disp);
+      state->id, state->x, state->y, state->dx, state->dy, state->primary,
+      disp);
 
    _al_event_source_lock(&touch_input.es);
-   memset(state, 0, sizeof(ALLEGRO_TOUCH_STATE));
+   state->id = -1;
    _al_event_source_unlock(&touch_input.es);
 }
 
 
-void _al_android_touch_input_handle_move(int id, double timestamp, float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
+static void android_touch_input_handle_move(int id, double timestamp,
+   float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
 {
    ALLEGRO_TOUCH_STATE* state = find_touch_state_with_id(id);
    (void)primary;
@@ -267,11 +298,13 @@ void _al_android_touch_input_handle_move(int id, double timestamp, float x, floa
    _al_event_source_unlock(&touch_input.es);
 
    generate_touch_input_event(ALLEGRO_EVENT_TOUCH_MOVE, timestamp,
-      state->id, state->x, state->y, state->dx, state->dy, state->primary, disp);
+      state->id, state->x, state->y, state->dx, state->dy, state->primary,
+      disp);
 }
 
 
-void _al_android_touch_input_handle_cancel(int id, double timestamp, float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
+static void android_touch_input_handle_cancel(int id, double timestamp,
+   float x, float y, bool primary, ALLEGRO_DISPLAY *disp)
 {
    ALLEGRO_TOUCH_STATE* state = find_touch_state_with_id(id);
    (void)primary;
@@ -290,8 +323,49 @@ void _al_android_touch_input_handle_cancel(int id, double timestamp, float x, fl
       state->id, state->x, state->y, state->dx, state->dy, state->primary, disp);
 
    _al_event_source_lock(&touch_input.es);
-   memset(state, 0, sizeof(ALLEGRO_TOUCH_STATE));
+   state->id = -1;
    _al_event_source_unlock(&touch_input.es);
+}
+
+
+JNI_FUNC(void, TouchListener, nativeOnTouch, (JNIEnv *env, jobject obj,
+   jint id, jint action, jfloat x, jfloat y, jboolean primary))
+{
+   (void)env;
+   (void)obj;
+
+   ALLEGRO_SYSTEM *system = al_get_system_driver();
+   ASSERT(system != NULL);
+
+   ALLEGRO_DISPLAY **dptr = _al_vector_ref(&system->displays, 0);
+   ALLEGRO_DISPLAY *display = *dptr;
+   ASSERT(display != NULL);
+
+   switch (action) {
+      case ALLEGRO_EVENT_TOUCH_BEGIN:
+         android_touch_input_handle_begin(id, al_get_time(), x, y, primary,
+            display);
+         break;
+
+      case ALLEGRO_EVENT_TOUCH_END:
+         android_touch_input_handle_end(id, al_get_time(), x, y, primary,
+            display);
+         break;
+
+      case ALLEGRO_EVENT_TOUCH_MOVE:
+         android_touch_input_handle_move(id, al_get_time(), x, y, primary,
+            display);
+         break;
+
+      case ALLEGRO_EVENT_TOUCH_CANCEL:
+         android_touch_input_handle_cancel(id, al_get_time(), x, y,
+            primary, display);
+         break;
+
+      default:
+         ALLEGRO_ERROR("unknown touch action: %i", action);
+         break;
+   }
 }
 
 
@@ -309,12 +383,14 @@ static ALLEGRO_TOUCH_INPUT_DRIVER touch_input_driver =
    NULL
 };
 
+
 ALLEGRO_TOUCH_INPUT_DRIVER *_al_get_android_touch_input_driver(void)
 {
     return &touch_input_driver;
 }
 
-void amouse_get_state(ALLEGRO_MOUSE_STATE *ret_state)
+
+void _al_android_mouse_get_state(ALLEGRO_MOUSE_STATE *ret_state)
 {
    _al_event_source_lock(&touch_input.es);
    *ret_state = mouse_state;
@@ -322,3 +398,4 @@ void amouse_get_state(ALLEGRO_MOUSE_STATE *ret_state)
 }
 
 
+/* vim: set sts=3 sw=3 et: */

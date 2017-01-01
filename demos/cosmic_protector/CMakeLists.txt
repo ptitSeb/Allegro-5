@@ -4,6 +4,16 @@ else()
     return()
 endif()
 
+include_directories(
+    include
+    ${PROJECT_SOURCE_DIR}/addons/main
+    ${PROJECT_SOURCE_DIR}/addons/image
+    ${PROJECT_SOURCE_DIR}/addons/font
+    ${PROJECT_SOURCE_DIR}/addons/audio
+    ${PROJECT_SOURCE_DIR}/addons/acodec
+    ${PROJECT_SOURCE_DIR}/addons/primitives
+    )
+
 set(DEMO_SRCS
     src/Asteroid.cpp
     src/BitmapResource.cpp
@@ -45,19 +55,27 @@ endif(IPHONE)
 
 set_source_files_properties(${DEMO_SRCS} PROPERTIES LANGUAGE "CXX")
 
-file(GLOB_RECURSE DEMO_GFX data/gfx/*.png data/gfx/*.jpg data/gfx/*.tga)
-file(GLOB_RECURSE DEMO_SFX data/sfx/*.ogg)
+file(GLOB_RECURSE DEMO_GFX RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    data/gfx/*.png data/gfx/*.jpg data/gfx/*.tga)
+file(GLOB_RECURSE DEMO_SFX RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    data/sfx/*.ogg)
 set(DEMO_ICON data/gfx/Icon.icns)
 
-include_directories(
-    include
-    ${CMAKE_SOURCE_DIR}/addons/main
-    ${CMAKE_SOURCE_DIR}/addons/image
-    ${CMAKE_SOURCE_DIR}/addons/font
-    ${CMAKE_SOURCE_DIR}/addons/audio
-    ${CMAKE_SOURCE_DIR}/addons/acodec
-    ${CMAKE_SOURCE_DIR}/addons/primitives
-    )
+if(ANDROID)
+    add_copy_commands(
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/cosmic_protector.project/assets"
+        ASSETS
+        "${DEMO_GFX}"
+        "${DEMO_SFX}"
+        )
+    add_android_app(cosmic_protector
+        "${DEMO_SRCS};${ASSETS}"
+        "${ALLEGRO_LINK_WITH};${IMAGE_LINK_WITH};${FONT_LINK_WITH};${AUDIO_LINK_WITH};${ACODEC_LINK_WITH};${PRIMITIVES_LINK_WITH}"
+        "stlport_shared"
+        )
+    return()
+endif(ANDROID)
 
 if(APPLE)
     set(DEMO_EXECUTABLE_TYPE MACOSX_BUNDLE)
@@ -113,7 +131,12 @@ set_source_files_properties(${DEMO_ICON} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources"
     )
 
-copy_data_dir_to_build(copy_demo_data data .)
+copy_data_dir_to_build(copy_demo_data
+    "${CMAKE_CURRENT_SOURCE_DIR}/data"
+    "${CMAKE_CURRENT_BINARY_DIR}/data"
+    )
+
+add_dependencies(cosmic_protector copy_demo_data)
 
 #-----------------------------------------------------------------------------#
 # vi: set ts=8 sts=4 sw=4 et:

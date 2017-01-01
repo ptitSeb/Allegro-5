@@ -57,7 +57,7 @@
          }                                                                    \
                                                                               \
          case ALLEGRO_PIXEL_FORMAT_RGB_888: {                                 \
-            uint32_t _gp_pixel = READ3BYTES(data);                            \
+            uint32_t _gp_pixel = _AL_READ3BYTES(data);                         \
             _AL_MAP_RGBA(color,                                               \
                (_gp_pixel & 0xFF0000) >> 16,                                  \
                (_gp_pixel & 0x00FF00) >>  8,                                  \
@@ -141,7 +141,7 @@
          }                                                                    \
                                                                               \
          case ALLEGRO_PIXEL_FORMAT_BGR_888: {                                 \
-            uint32_t _gp_pixel = READ3BYTES(data);                            \
+            uint32_t _gp_pixel = _AL_READ3BYTES(data);                         \
             _AL_MAP_RGBA(color,                                               \
                (_gp_pixel & 0x000000FF) >>  0,                                \
                (_gp_pixel & 0x0000FF00) >>  8,                                \
@@ -252,6 +252,13 @@
             abort();                                                          \
             break;                                                            \
                                                                               \
+         case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1:                                 \
+         case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT3:                                 \
+         case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT5:                                 \
+            ALLEGRO_ERROR("INLINE_GET got compressed format: %d\n", format); \
+            abort();                                                          \
+            break;                                                            \
+                                                                              \
          case ALLEGRO_NUM_PIXEL_FORMATS:                                      \
          default:                                                             \
             ALLEGRO_ERROR("INLINE_GET got non pixel format: %d\n", format); \
@@ -299,7 +306,7 @@
             _pp_pixel  = _al_fast_float_to_int(color.r * 255) << 16;          \
             _pp_pixel |= _al_fast_float_to_int(color.g * 255) << 8;           \
             _pp_pixel |= _al_fast_float_to_int(color.b * 255);                \
-            WRITE3BYTES(data, _pp_pixel);                                     \
+            _AL_WRITE3BYTES(data, _pp_pixel);                                  \
             if (advance)                                                      \
                data += 3;                                                     \
             break;                                                            \
@@ -366,7 +373,7 @@
             _pp_pixel  = _al_fast_float_to_int(color.b * 0xff) << 16;         \
             _pp_pixel |= _al_fast_float_to_int(color.g * 0xff) << 8;          \
             _pp_pixel |= _al_fast_float_to_int(color.r * 0xff);               \
-            WRITE3BYTES(data, _pp_pixel);                                     \
+            _AL_WRITE3BYTES(data, _pp_pixel);                                  \
             if (advance)                                                      \
                data += 3;                                                     \
             break;                                                            \
@@ -460,6 +467,13 @@
             abort();                                                          \
             break;                                                            \
                                                                               \
+         case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1:                      \
+         case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT3:                      \
+         case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT5:                      \
+            ALLEGRO_ERROR("INLINE_PUT got compressed format: %d\n", format); \
+            abort();                                                          \
+            break;                                                            \
+                                                                              \
          case ALLEGRO_NUM_PIXEL_FORMATS:                                      \
             ALLEGRO_ERROR("INLINE_PUT got non _pp_pixel format: %d\n", format); \
             abort();                                                          \
@@ -473,11 +487,13 @@ AL_ARRAY(int, _al_rgb_scale_5);
 AL_ARRAY(int, _al_rgb_scale_6);
 AL_ARRAY(float, _al_u8_to_float);
 
-void _al_init_pixels(void);
-bool _al_pixel_format_has_alpha(int format);
-bool _al_pixel_format_is_real(int format);
-int _al_get_real_pixel_format(ALLEGRO_DISPLAY *display, int format);
-char const *_al_pixel_format_name(ALLEGRO_PIXEL_FORMAT format);
+AL_FUNC(void, _al_init_pixels, (void));
+AL_FUNC(bool, _al_pixel_format_has_alpha, (int format));
+AL_FUNC(bool, _al_pixel_format_is_real, (int format));
+AL_FUNC(bool, _al_pixel_format_is_video_only, (int format));
+AL_FUNC(bool, _al_pixel_format_is_compressed, (int format));
+AL_FUNC(int, _al_get_real_pixel_format, (ALLEGRO_DISPLAY *display, int format));
+AL_FUNC(char const*, _al_pixel_format_name, (ALLEGRO_PIXEL_FORMAT format));
 
 
 #ifdef __cplusplus

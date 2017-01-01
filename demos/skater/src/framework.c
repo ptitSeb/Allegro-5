@@ -1,5 +1,7 @@
 #include <allegro5/allegro.h>
-#include <allegro5/allegro_native_dialog.h>
+#ifdef ALLEGRO_ANDROID
+#include <allegro5/allegro_android.h>
+#endif
 #include "global.h"
 #include "credits.h"
 #include "fps.h"
@@ -73,14 +75,10 @@ int init_framework(void)
    if (!al_init()) {
       return DEMO_ERROR_ALLEGRO;
    }
-   if (!al_init_native_dialog_addon()) {
-      return DEMO_ERROR_ALLEGRO;
-   }
-   
+
    al_init_image_addon();
    al_init_primitives_addon();
    al_init_font_addon();
-   al_init_ttf_addon();
 
    /* Construct aboslute path for the configuration file. */
    al_set_app_name("Allegro Skater Demo");
@@ -92,12 +90,18 @@ int init_framework(void)
    al_destroy_path(path);
 
    /* Construct absolute path for the datafile containing game menu data. */
+#ifdef ALLEGRO_ANDROID
+   al_android_set_apk_file_interface();
+   strncpy(data_path, "/data", DEMO_PATH_LENGTH);
+   (void)drop_build_config_dir;
+#else
    path = al_get_standard_path(ALLEGRO_RESOURCES_PATH);
    al_set_path_filename(path, "");
    drop_build_config_dir(path);
    al_append_path_component(path, "data");
    strncpy(data_path, al_path_cstr(path, '/'), DEMO_PATH_LENGTH);
    al_destroy_path(path);
+#endif
 
    /* Read configuration file. */
    read_global_config(config_path);
@@ -118,13 +122,13 @@ int init_framework(void)
 
    /* Attempt to set the gfx mode. */
    if ((error = change_gfx_mode()) != DEMO_OK) {
-      allegro_message("Error: %s\n", demo_error(error));
+      fprintf(stderr, "Error: %s\n", demo_error(error));
       return error;
    }
 
    /* Attempt to install the Allegro keyboard submodule. */
    if (!al_install_keyboard()) {
-      allegro_message("Error installing keyboard: %s\n",
+      fprintf(stderr, "Error installing keyboard: %s\n",
                       demo_error(DEMO_ERROR_ALLEGRO));
       return DEMO_ERROR_ALLEGRO;
    }

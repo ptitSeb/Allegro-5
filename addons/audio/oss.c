@@ -68,7 +68,9 @@ static char oss_audio_device[512];
 
 /* timing policy (between 0 and 10), used by OSS4
  * Make this configurable? */
+#ifdef OSS_VER_4
 static const int oss_timing_policy = 5;
+#endif
 
 /* Fragment size, used by OSS3 
  * Make this configurable? */
@@ -76,7 +78,6 @@ static int oss_fragsize = (8 << 16) | (10);
 
 /* Auxiliary buffer used to store silence. */
 #define SIL_BUF_SIZE 1024
-static char sil_buf[SIL_BUF_SIZE];
 
 static bool using_ver_4;
 
@@ -194,13 +195,11 @@ static int oss_open_ver4()
 
 static int oss_open_ver3(void)
 {
-   ALLEGRO_CONFIG *config = al_get_system_config();
-   if (config) {
-      const char *config_device;
-      config_device = al_get_config_value(config, "oss", "device");
-      if (config_device && config_device[0] != '\0')
-         oss_audio_device_ver3 = config_device;
-   }
+   const char *config_device;
+   config_device = al_get_config_value(al_get_system_config(),
+      "oss", "device");
+   if (config_device && config_device[0] != '\0')
+      oss_audio_device_ver3 = config_device;
 
    int fd = open(oss_audio_device_ver3, O_WRONLY);
    if (fd == -1) {
@@ -238,13 +237,11 @@ static int oss_open_ver3(void)
 static int oss_open(void)
 {
    bool force_oss3 = false;
-   ALLEGRO_CONFIG *config = al_get_system_config();
-   if (config) {
-      const char *force_oss3_cfg;
-      force_oss3_cfg = al_get_config_value(config, "oss", "force_ver3");
-      if (force_oss3_cfg && force_oss3_cfg[0] != '\0')
-         force_oss3 = strcmp(force_oss3_cfg, "yes") ? false : true;
-   }
+   const char *force_oss3_cfg;
+   force_oss3_cfg = al_get_config_value(al_get_system_config(), "oss",
+      "force_ver3");
+   if (force_oss3_cfg && force_oss3_cfg[0] != '\0')
+      force_oss3 = strcmp(force_oss3_cfg, "yes") ? false : true;
 
    if (force_oss3) {
       ALLEGRO_WARN("Skipping OSS4 probe.\n");
@@ -407,6 +404,21 @@ static int oss_update_nonstream_voice(ALLEGRO_VOICE *voice, void **buf, int *byt
 }
 
 
+static void oss_update_silence(ALLEGRO_VOICE *voice, OSS_VOICE *oss_voice)
+{
+   char sil_buf[SIL_BUF_SIZE];
+   unsigned int silent_samples;
+
+   silent_samples = SIL_BUF_SIZE /
+      (al_get_audio_depth_size(voice->depth) *
+       al_get_channel_count(voice->chan_conf));
+   al_fill_silence(sil_buf, silent_samples, voice->depth, voice->chan_conf);
+   if (write(oss_voice->fd, sil_buf, SIL_BUF_SIZE) == -1) {
+      ALLEGRO_ERROR("errno: %i -- %s\n", errno, strerror(errno));
+   }
+}
+
+
 static void* oss_update(ALLEGRO_THREAD *self, void *arg)
 {
    ALLEGRO_VOICE *voice = arg;
@@ -452,10 +464,11 @@ static void* oss_update(ALLEGRO_THREAD *self, void *arg)
          }
       }
       else if (voice->is_streaming && !oss_voice->stopped) {
-         const void *data = _al_voice_update(voice, &frames);
-         if (data == NULL)
-            goto silence;
-
+         const void *data = _al_voice_update(voice, voice->mutex, &frames);
+         if (data == NULL) {
+            oss_update_silence(voice, oss_voice);
+            continue;
+         }
          if (write(oss_voice->fd, data, frames * oss_voice->frame_size) == -1) {
             ALLEGRO_ERROR("errno: %i -- %s\n", errno, strerror(errno));
             if (errno != EINTR)
@@ -463,12 +476,8 @@ static void* oss_update(ALLEGRO_THREAD *self, void *arg)
          }
       }
       else {
-silence:
          /* If stopped just fill with silence. */
-         memset(sil_buf, _al_kcm_get_silence(voice->depth), SIL_BUF_SIZE);
-         if (write(oss_voice->fd, sil_buf, SIL_BUF_SIZE) == -1) {
-            ALLEGRO_ERROR("errno: %i -- %s\n", errno, strerror(errno));
-         }
+         oss_update_silence(voice, oss_voice);
       }
    }
 

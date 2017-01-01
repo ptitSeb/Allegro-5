@@ -243,7 +243,7 @@ static ALLEGRO_BITMAP *really_load_png(png_structp png_ptr, png_infop info_ptr,
          if (interlace_type == PNG_INTERLACE_ADAM7)
             ptr = buf + y * real_rowbytes;
          else
-             ptr = buf;
+            ptr = buf;
          png_read_row(png_ptr, NULL, ptr);
    
          switch (bpp) {
@@ -256,17 +256,20 @@ static ALLEGRO_BITMAP *really_load_png(png_structp png_ptr, png_infop info_ptr,
                else if (color_type & PNG_COLOR_MASK_PALETTE) {
                   for (i = 0; i < width; i++) {
                      int pix = ptr[0];
-                     int ti;
                      ptr++;
                      dest[0] = pal[pix].r;
                      dest[1] = pal[pix].g;
                      dest[2] = pal[pix].b;
-                     dest[3] = 255;
-                     for (ti = 0; ti < num_trans; ti++) {
-                        if (trans[ti] == pix) {
-                           dest[0] = dest[1] = dest[2] = dest[3] = 0;
-                           break;
+                     if (pix < num_trans) {
+                        int a = trans[pix];
+                        dest[3] = a;
+                        if (premul) {
+                           dest[0] = dest[0] * a / 255;
+                           dest[1] = dest[1] * a / 255;
+                           dest[2] = dest[2] * a / 255;
                         }
+                     } else {
+                        dest[3] = 255;
                      }
                      dest += 4;
                   }
@@ -285,7 +288,7 @@ static ALLEGRO_BITMAP *really_load_png(png_structp png_ptr, png_infop info_ptr,
 
             case 24:
                for (i = 0; i < width; i++) {
-                  uint32_t pix = READ3BYTES(ptr);
+                  uint32_t pix = _AL_READ3BYTES(ptr);
                   ptr += 3;
                   *(dest++) = pix & 0xff;
                   *(dest++) = (pix >> 8) & 0xff;
@@ -296,7 +299,7 @@ static ALLEGRO_BITMAP *really_load_png(png_structp png_ptr, png_infop info_ptr,
 
             case 32:
                for (i = 0; i < width; i++) {
-                  uint32_t pix = bmp_read32(ptr);
+                  uint32_t pix = *(uint32_t*)ptr;
                   int r = pix & 0xff;
                   int g = (pix >> 8) & 0xff;
                   int b = (pix >> 16) & 0xff;
@@ -560,7 +563,8 @@ bool _al_save_png_f(ALLEGRO_FILE *fp, ALLEGRO_BITMAP *bmp)
 bool _al_save_png(const char *filename, ALLEGRO_BITMAP *bmp)
 {
    ALLEGRO_FILE *fp;
-   bool result;
+   bool retsave;
+   bool retclose;
 
    ALLEGRO_ASSERT(filename);
    ALLEGRO_ASSERT(bmp);
@@ -571,10 +575,10 @@ bool _al_save_png(const char *filename, ALLEGRO_BITMAP *bmp)
       return false;
    }
 
-   result = _al_save_png_f(fp, bmp);
-   al_fclose(fp);
+   retsave = _al_save_png_f(fp, bmp);
+   retclose = al_fclose(fp);
 
-   return result;
+   return retsave && retclose;
 }
 
 /* vim: set sts=3 sw=3 et: */

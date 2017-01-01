@@ -20,6 +20,10 @@
 
 #include "allegro5/allegro.h"
 #include "allegro5/internal/aintern.h"
+#ifdef ALLEGRO_CFG_SHADER_GLSL
+#include "allegro5/allegro_opengl.h"
+#include "allegro5/internal/aintern_opengl.h"
+#endif
 #include ALLEGRO_INTERNAL_HEADER
 #include "allegro5/internal/aintern_bitmap.h"
 #include "allegro5/internal/aintern_debug.h"
@@ -35,6 +39,7 @@
 ALLEGRO_DEBUG_CHANNEL("system")
 
 static ALLEGRO_SYSTEM *active_sysdrv = NULL;
+static ALLEGRO_CONFIG *sys_config = NULL;
 
 _AL_VECTOR _al_system_interfaces;
 static _AL_VECTOR _user_system_interfaces = _AL_VECTOR_INITIALIZER(ALLEGRO_SYSTEM_INTERFACE *);
@@ -70,20 +75,19 @@ static ALLEGRO_SYSTEM *find_system(_AL_VECTOR *vector)
 static void shutdown_system_driver(void)
 {
    if (active_sysdrv) {
-      ALLEGRO_CONFIG *temp = active_sysdrv->config;
       if (active_sysdrv->user_exe_path)
          al_destroy_path(active_sysdrv->user_exe_path);
       if (active_sysdrv->vt && active_sysdrv->vt->shutdown_system)
          active_sysdrv->vt->shutdown_system();
       active_sysdrv = NULL;
-      /* active_sysdrv is not accessible here so we copied it */
-      al_destroy_config(temp);
  
       while (!_al_vector_is_empty(&_al_system_interfaces))
          _al_vector_delete_at(&_al_system_interfaces, _al_vector_size(&_al_system_interfaces)-1);
       _al_vector_free(&_al_system_interfaces);
       _al_vector_init(&_al_system_interfaces, sizeof(ALLEGRO_SYSTEM_INTERFACE *));
    }
+   al_destroy_config(sys_config);
+   sys_config = NULL;
 }
 
 
@@ -104,6 +108,8 @@ static ALLEGRO_PATH *early_get_exename_path(void)
    return _al_unix_get_path(ALLEGRO_EXENAME_PATH);
 #elif defined(ALLEGRO_ANDROID)
    return _al_android_get_path(ALLEGRO_EXENAME_PATH);
+#elif defined(ALLEGRO_SDL)
+   return al_create_path_for_directory(SDL_GetBasePath());
 #else
    #error early_get_exename_path not implemented
 #endif
@@ -113,34 +119,29 @@ static ALLEGRO_PATH *early_get_exename_path(void)
 
 static void read_allegro_cfg(void)
 {
-   /* We cannot use any logging in this function as it would cause the
-    * logging system to be initialised before all the relevant config files
-    * have been read in.
-    */
-
    /* We assume that the stdio file interface is in effect. */
 
    ALLEGRO_PATH *path;
    ALLEGRO_CONFIG *temp;
 
-   active_sysdrv->config = NULL;
+   if (!sys_config)
+      sys_config = al_create_config();
 
 #if defined(ALLEGRO_UNIX) && !defined(ALLEGRO_IPHONE)
-   active_sysdrv->config = al_load_config_file("/etc/allegro5rc");
+   temp = al_load_config_file("/etc/allegro5rc");
+   if (temp) {
+      al_merge_config_into(sys_config, temp);
+      al_destroy_config(temp);
+   }
 
    path = _al_unix_get_path(ALLEGRO_USER_HOME_PATH);
    if (path) {
       al_set_path_filename(path, "allegro5rc");
       temp = al_load_config_file(al_path_cstr(path, '/'));
       if (temp) {
-         if (active_sysdrv->config) {
-            al_merge_config_into(active_sysdrv->config, temp);
+         al_merge_config_into(sys_config, temp);
             al_destroy_config(temp);
          }
-         else {
-            active_sysdrv->config = temp;
-         }
-      }
       al_destroy_path(path);
    }
 #endif
@@ -150,45 +151,51 @@ static void read_allegro_cfg(void)
       al_set_path_filename(path, "allegro5.cfg");
       temp = al_load_config_file(al_path_cstr(path, ALLEGRO_NATIVE_PATH_SEP));
       if (temp) {
-         if (active_sysdrv->config) {
-            al_merge_config_into(active_sysdrv->config, temp);
+         al_merge_config_into(sys_config, temp);
             al_destroy_config(temp);
          }
-         else {
-            active_sysdrv->config = temp;
-         }
-      }
       al_destroy_path(path);
    }
-
-   /* Always have a configuration available whether or not a config file
-    * exists.
-    */
-   if (!active_sysdrv->config)
-      active_sysdrv->config = al_create_config();
+   /* Reconfigure logging in case something changed. */
+   _al_configure_logging();
 }
 
 
 
 /*
+ * Can a binary with version a use a library with version b?
+ *
  * Let a = xa.ya.za.*
  * Let b = xb.yb.zb.*
  *
- * When ya is odd, a is compatible with b if xa.ya.za = xb.yb.zb.
- * When ya is even, a is compatible with b if xa.ya = xb.yb.
+ * When a has the unstable bit, a is compatible with b if xa.ya.za = xb.yb.zb.
+ * Otherwise, a is compatible with b if xa.ya = xb.yb and zb >= za.
  *
  * Otherwise a and b are incompatible.
  */
 static bool compatible_versions(int a, int b)
 {
-   if ((a & 0xffff0000) != (b & 0xffff0000)) {
+   int a_unstable = a & (1 << 31);
+
+   int a_major = (a & 0x7f000000) >> 24;
+   int a_sub   = (a & 0x00ff0000) >> 16;
+   int a_wip   = (a & 0x0000ff00) >> 8;
+
+   int b_major = (b & 0x7f000000) >> 24;
+   int b_sub   = (b & 0x00ff0000) >> 16;
+   int b_wip   = (b & 0x0000ff00) >> 8;
+
+   if (a_major != b_major) {
       return false;
    }
-   if (((a & 0x00ff0000) >> 16) & 1) {
-      
-      if ((a & 0x0000ff00) != (b & 0x0000ff00)) {
+   if (a_unstable && a_wip != b_wip) {
+      return false;
+   }
+   if (a_sub != b_sub) {
          return false;
       }
+   if (a_wip > b_wip) {
+      return false;
    }
    return true;
 }
@@ -218,11 +225,7 @@ bool al_install_system(int version, int (*atexit_ptr)(void (*)(void)))
 
    _al_vector_init(&_al_system_interfaces, sizeof(ALLEGRO_SYSTEM_INTERFACE *));
 
-   /* We want active_sysdrv->config to be available as soon as
-    * possible - for example what if a system driver need to read
-    * settings out of there. Hence we use a dummy ALLEGRO_SYSTEM
-    * here to load the initial config.
-    */
+   /* Set up a bootstrap system so the calls expecting it don't freak out */
    memset(&bootstrap, 0, sizeof(bootstrap));
    active_sysdrv = &bootstrap;
    read_allegro_cfg();
@@ -249,7 +252,7 @@ bool al_install_system(int version, int (*atexit_ptr)(void (*)(void)))
    }
    
    active_sysdrv = real_system;
-   active_sysdrv->config = bootstrap.config;
+   active_sysdrv->mouse_wheel_precision = 1;
 
    ALLEGRO_INFO("Allegro version: %s\n", ALLEGRO_VERSION_STR);
 
@@ -271,8 +274,17 @@ bool al_install_system(int version, int (*atexit_ptr)(void (*)(void)))
 
    _al_init_timers();
 
+#ifdef ALLEGRO_CFG_SHADER_GLSL
+   _al_glsl_init_shaders();
+#endif
+
+   if (active_sysdrv->vt->heartbeat_init)
+      active_sysdrv->vt->heartbeat_init();
+
    if (atexit_ptr && atexit_virgin) {
+#ifndef ALLEGRO_ANDROID
       atexit_ptr(al_uninstall_system);
+#endif
       atexit_virgin = false;
    }
 
@@ -285,8 +297,6 @@ bool al_install_system(int version, int (*atexit_ptr)(void (*)(void)))
 
    return true;
 }
-
-
 
 /* Function: al_uninstall_system
  */
@@ -305,6 +315,11 @@ printf("_al_run_exit_funcs();\n");
    _al_shutdown_destructors(_al_dtor_list);
 printf("_al_shutdown_destructors(_al_dtor_list);\n");
    _al_dtor_list = NULL;
+
+#ifdef ALLEGRO_CFG_SHADER_GLSL
+   _al_glsl_shutdown_shaders();
+#endif
+
    _al_shutdown_logging();
 printf("_al_shutdown_logging();\n");
 
@@ -339,7 +354,9 @@ ALLEGRO_SYSTEM *al_get_system_driver(void)
  */
 ALLEGRO_CONFIG *al_get_system_config(void)
 {
-   return (active_sysdrv) ? active_sysdrv->config : NULL;
+   if (!sys_config)
+      sys_config = al_create_config();
+   return sys_config;
 }
 
 

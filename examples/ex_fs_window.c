@@ -77,8 +77,11 @@ static void run(void)
    }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
@@ -87,6 +90,7 @@ int main(void)
    al_install_keyboard();
    al_init_image_addon();
    al_init_font_addon();
+   init_platform_specific();
 
    al_set_new_display_flags(ALLEGRO_FULLSCREEN_WINDOW);
    display = al_create_display(640, 480);

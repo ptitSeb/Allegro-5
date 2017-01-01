@@ -57,20 +57,18 @@ endif()
 if(SUPPORT_NATIVE_DIALOG)
    configure_file(
        allegro5/internal/aintern_native_dialog_cfg.h.cmake
-       ${CMAKE_BINARY_DIR}/include/allegro5/internal/aintern_native_dialog_cfg.h
+       ${PROJECT_BINARY_DIR}/include/allegro5/internal/aintern_native_dialog_cfg.h
        )
    
    include_directories(SYSTEM ${NATIVE_DIALOG_INCLUDE_DIRECTORIES})
 
    # Note: allegro_dialog NOT allegro_native_dialog.
    add_our_addon_library(allegro_dialog
+       AllegroDialog-${ALLEGRO_SOVERSION}
        "${NATIVE_DIALOG_SOURCES};${NATIVE_DIALOG_INCLUDE_FILES}"
        "-DALLEGRO_NATIVE_DIALOG_SRC"
        "${NATIVE_DIALOG_LIBRARIES};${ALLEGRO_LINK_WITH}"
        )
-
-   # Note: allegro_dialog NOT allegro_native_dialog.
-   set_our_framework_properties(allegro_dialog AllegroDialog-${ALLEGRO_SOVERSION})
 
    install_our_headers(${NATIVE_DIALOG_INCLUDE_FILES})
 

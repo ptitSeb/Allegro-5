@@ -124,6 +124,10 @@ ALLEGRO_DEBUG_CHANNEL("fshook")
    #define WRAP_READDIR(d)          (readdir(d))
 #endif
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 
 typedef struct ALLEGRO_FS_ENTRY_STDIO ALLEGRO_FS_ENTRY_STDIO;
 
@@ -697,8 +701,10 @@ static bool fs_stdio_remove_filename(const char *path)
    bool rc;
 
    fp = fs_stdio_create_entry(path);
-   if (!fp)
+   if (!fp) {
+      ALLEGRO_WARN("Cannot remove %s.", path);
       return false;
+   }
 
    rc = fs_stdio_remove_entry(fp);
    fs_stdio_destroy_entry(fp);

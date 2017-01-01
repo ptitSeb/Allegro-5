@@ -170,8 +170,6 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
    return b;
 }
 
-/* Function: al_save_pcx_f
- */
 bool _al_save_pcx_f(ALLEGRO_FILE *f, ALLEGRO_BITMAP *bmp)
 {
    int c;
@@ -274,18 +272,35 @@ ALLEGRO_BITMAP *_al_load_pcx(const char *filename, int flags)
 bool _al_save_pcx(const char *filename, ALLEGRO_BITMAP *bmp)
 {
    ALLEGRO_FILE *f;
-   bool ret;
+   bool retsave;
+   bool retclose;
    ASSERT(filename);
 
    f = al_fopen(filename, "wb");
    if (!f)
       return false;
 
-   ret = _al_save_pcx_f(f, bmp);
+   retsave = _al_save_pcx_f(f, bmp);
 
-   al_fclose(f);
+   retclose = al_fclose(f);
 
-   return ret;
+   return retsave && retclose;
+}
+
+bool _al_identify_pcx(ALLEGRO_FILE *f)
+{
+   uint8_t x[4];
+   al_fread(f, x, 4);
+   
+   if (x[0] != 0x0a) // PCX must start with 0x0a
+      return false;
+   if (x[1] == 1 || x[1] > 5) // version must be 0, 2, 3, 4, 5
+      return false;
+   if (x[2] > 1) // compression must be 0 or 1
+      return false;
+   if (x[3] != 8) // only 8-bit PCX files supported by Allegro!
+      return false;
+   return true;
 }
 
 

@@ -78,20 +78,13 @@ static void delete_string_list(_AL_VECTOR *v)
 }
 
 
-static void configure_logging(void)
+void _al_configure_logging(void)
 {
    ALLEGRO_CONFIG *config;
    char const *v;
    bool got_all = false;
 
-   /* Messages logged before the system driver and allegro5.cfg are
-    * up will always use defaults - but usually nothing is logged
-    * before al_init.
-    */
    config = al_get_system_config();
-   if (!config)
-      return;
-
    v = al_get_config_value(config, "trace", "channels");
    if (v) {
       ALLEGRO_USTR_INFO uinfo;
@@ -130,11 +123,19 @@ static void configure_logging(void)
          delete_string_list(&trace_info.channels);
    }
 
+#ifdef DEBUGMODE
+   trace_info.level = 0;
+#else
+   trace_info.level = 9999;
+#endif
+
    v = al_get_config_value(config, "trace", "level");
    if (v) {
       if (!strcmp(v, "error")) trace_info.level = 3;
       else if (!strcmp(v, "warn")) trace_info.level = 2;
       else if (!strcmp(v, "info")) trace_info.level = 1;
+      else if (!strcmp(v, "debug")) trace_info.level = 0;
+      else if (!strcmp(v, "none")) trace_info.level = 9999;
    }
 
    v = al_get_config_value(config, "trace", "timestamps");
@@ -221,9 +222,8 @@ bool _al_trace_prefix(char const *channel, int level,
    char *name;
    _AL_VECTOR const *v;
 
-   /* XXX logging should be reconfigured if the system driver is reinstalled */
    if (!trace_info.configured) {
-      configure_logging();
+      _al_configure_logging();
    }
 
    if (level < trace_info.level)
@@ -284,13 +284,9 @@ channel_included:
       do_trace("%-32s ", function);
    }
    if (trace_info.flags & 4) {
-      double t = al_get_time();
-      /* Kludge:
-       * Very high timers (more than a year?) likely mean the timer
-       * subsystem isn't initialized yet, so print 0.
-       */
-      if (t > 3600 * 24 * 365)
-         t = 0;
+      double t = 0;
+      if (al_is_system_installed())
+         t = al_get_time();
       do_trace("[%10.5f] ", t);
    }
 

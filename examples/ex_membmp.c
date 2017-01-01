@@ -76,13 +76,16 @@ static bool test(ALLEGRO_BITMAP *bitmap, ALLEGRO_FONT *font, char *message)
    return quit;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_FONT *accelfont;
    ALLEGRO_FONT *memfont;
    ALLEGRO_BITMAP *accelbmp;
    ALLEGRO_BITMAP *membmp;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -91,6 +94,7 @@ int main(void)
    al_install_keyboard();
    al_init_image_addon();
    al_init_font_addon();
+   init_platform_specific();
 
    display = al_create_display(640, 400);
    if (!display) {

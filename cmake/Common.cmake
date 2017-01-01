@@ -21,6 +21,23 @@ function(set_our_header_properties)
     endforeach(file)
 endfunction(set_our_header_properties)
 
+# Normally CMake caches the "failure" result of a compile test, preventing it
+# from re-running. These helpers delete the cache variable on failure so that
+# CMake will try again next time.
+function(run_c_compile_test source var)
+    check_c_source_compiles("${source}" ${var})
+    if (NOT ${var})
+        unset(${var} CACHE)
+    endif(NOT ${var})
+endfunction(run_c_compile_test)
+
+function(run_cxx_compile_test source var)
+    check_cxx_source_compiles("${source}" ${var})
+    if (NOT ${var})
+        unset(${var} CACHE)
+    endif(NOT ${var})
+endfunction(run_cxx_compile_test)
+
 function(append_lib_type_suffix var)
     string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_TOLOWER)
     if(CMAKE_BUILD_TYPE_TOLOWER STREQUAL "debug")
@@ -65,9 +82,33 @@ function(sanitize_cmake_link_flags ...)
     set(return ${return} PARENT_SCOPE)
 endfunction(sanitize_cmake_link_flags)
 
-function(add_our_library target sources extra_flags link_with)
+function(add_our_library target framework_name sources extra_flags link_with)
     # BUILD_SHARED_LIBS controls whether this is a shared or static library.
     add_library(${target} ${sources})
+
+    if(MSVC)
+        # Compile with multiple processors
+        set(extra_flags "${extra_flags} /MP")
+        if(WANT_STATIC_RUNTIME)
+            if(CMAKE_BUILD_TYPE STREQUAL Debug)
+                set(extra_flags "${extra_flags} /MTd")
+            else()
+                set(extra_flags "${extra_flags} /MT")
+            endif()
+            if (NOT BUILD_SHARED_LIBS)
+                # /Zl instructs MSVC to not mention the CRT used at all,
+                # allowing the static libraries to be combined with any CRT version
+                # in the final dll/exe.
+                set(extra_flags "${extra_flags} /Zl")
+            endif()
+        endif()
+    elseif(MINGW)
+        if(WANT_STATIC_RUNTIME)
+            # TODO: The -static is a bit of a hack for MSYS2 to force the static linking of pthreads.
+            # There has to be a better way.
+            set(extra_link_flags "-static-libgcc -static-libstdc++ -static -lpthread")
+        endif()
+    endif()
 
     if(NOT BUILD_SHARED_LIBS)
         set(static_flag "-DALLEGRO_STATICLINK")
@@ -77,6 +118,7 @@ function(add_our_library target sources extra_flags link_with)
         set_target_properties(${target}
             PROPERTIES
             COMPILE_FLAGS "${extra_flags} ${static_flag} -DALLEGRO_LIB_BUILD"
+            LINK_FLAGS "${extra_link_flags}"
             VERSION ${ALLEGRO_VERSION}
             SOVERSION ${ALLEGRO_SOVERSION}
             )
@@ -127,16 +169,33 @@ function(add_our_library target sources extra_flags link_with)
         PROPERTIES
         static_link_with "${return}"
         )
-    install_our_library(${target})
+    set_our_framework_properties(${target} ${framework_name})
+    install_our_library(${target} ${output_name})
 endfunction(add_our_library)
 
-macro(add_our_addon_library target sources extra_flags link_with)
+macro(add_our_addon_library target framework_name sources extra_flags link_with)
     if(WANT_MONOLITH)
         set(MONOLITH_DEFINES "${MONOLITH_DEFINES} ${extra_flags}")
     else()
-        add_our_library(${target} "${sources}" "${extra_flags}" "${link_with}")
+        add_our_library(${target} ${framework_name} "${sources}" "${extra_flags}" "${link_with}")
+        if(ANDROID)
+            record_android_load_libs(${target} "${link_with}")
+        endif()
     endif()
 endmacro(add_our_addon_library)
+
+# Record in a custom target property 'ANDROID_LOAD_LIBS' the list of shared
+# objects that will need to be bundled with the APK and loaded manually if
+# linking with this target.
+function(record_android_load_libs target libs)
+    set(load_libs)
+    foreach(lib ${libs})
+        if(lib MATCHES "/lib[^/]+[.]so$" AND NOT lib MATCHES "/sysroot/")
+            list(APPEND load_libs "${lib}")
+        endif()
+    endforeach()
+    set_target_properties(${target} PROPERTIES ANDROID_LOAD_LIBS "${load_libs}")
+endfunction(record_android_load_libs)
 
 function(set_our_framework_properties target nm)
     if(WANT_FRAMEWORKS)
@@ -154,7 +213,7 @@ function(set_our_framework_properties target nm)
     endif(WANT_FRAMEWORKS)
 endfunction(set_our_framework_properties)
 
-function(install_our_library target)
+function(install_our_library target filename)
     install(TARGETS ${target}
             LIBRARY DESTINATION "lib${LIB_SUFFIX}"
             ARCHIVE DESTINATION "lib${LIB_SUFFIX}"
@@ -163,6 +222,12 @@ function(install_our_library target)
             # Doesn't work, see below.
             # PUBLIC_HEADER DESTINATION "include"
             )
+    if(MSVC AND BUILD_SHARED_LIBS)
+        install(FILES ${CMAKE_BINARY_DIR}/lib/\${CMAKE_INSTALL_CONFIG_NAME}/${filename}.pdb
+            DESTINATION lib
+            CONFIGURATIONS Debug RelWithDebInfo
+        )
+    endif()
 endfunction(install_our_library)
 
 # Unfortunately, CMake's PUBLIC_HEADER support doesn't install into nested
@@ -200,60 +265,79 @@ function(fix_executable nm)
     endif(IPHONE)
 endfunction(fix_executable)
 
-# Arguments after nm should be source files, libraries, or defines (-D).
-# Source files must end with .c or .cpp.  If no source file was explicitly
-# specified, we assume an implied C source file.
-# 
+# Ads a target for an executable target `nm`.
+#
+# Arguments:
+#
+#    SRCS - Sources. If empty, assumes it to be ${nm}.c
+#    LIBS - Libraries to link to.
+#    DEFINES - Additional defines.
+#
 # Free variable: EXECUTABLE_TYPE
 function(add_our_executable nm)
-    set(srcs)
-    set(libs)
-    set(defines)
-    set(regex "[.](c|cpp)$")
-    set(regexd "^-D")
-    foreach(arg ${ARGN})
-        if("${arg}" MATCHES "${regex}")
-            list(APPEND srcs ${arg})
-        else("${arg}" MATCHES "${regex}")
-            if ("${arg}" MATCHES "${regexd}")
-                string(REGEX REPLACE "${regexd}" "" arg "${arg}")
-                list(APPEND defines ${arg})                
-            else("${arg}" MATCHES "${regexd}")
-                list(APPEND libs ${arg})
-            endif("${arg}" MATCHES "${regexd}")
-        endif("${arg}" MATCHES "${regex}")
-    endforeach(arg ${ARGN})
+    set(flags) # none
+    set(single_args) # none
+    set(multi_args SRCS LIBS DEFINES)
+    cmake_parse_arguments(OPTS "${flags}" "${single_args}" "${multi_args}"
+        ${ARGN})
 
-    if(NOT srcs)
-        set(srcs "${nm}.c")
-    endif(NOT srcs)
+    if(NOT OPTS_SRCS)
+        set(OPTS_SRCS "${nm}.c")
+    endif()
     
     if(IPHONE)
         set(EXECUTABLE_TYPE MACOSX_BUNDLE)
-        set(srcs ${srcs} "${CMAKE_SOURCE_DIR}/misc/icon.png")
-    endif(IPHONE)
+        set(OPTS_SRCS ${OPTS_SRCS} "${CMAKE_SOURCE_DIR}/misc/icon.png")
+    endif()
 
-    add_executable(${nm} ${EXECUTABLE_TYPE} ${srcs})
-    target_link_libraries(${nm} ${libs})
+    add_executable(${nm} ${EXECUTABLE_TYPE} ${OPTS_SRCS})
+    target_link_libraries(${nm} ${OPTS_LIBS})
     if(WANT_POPUP_EXAMPLES AND SUPPORT_NATIVE_DIALOG)
-        list(APPEND defines ALLEGRO_POPUP_EXAMPLES)                        
+        list(APPEND OPTS_DEFINES ALLEGRO_POPUP_EXAMPLES)
     endif()
     if(NOT BUILD_SHARED_LIBS)
-        list(APPEND defines ALLEGRO_STATICLINK)                        
-    endif(NOT BUILD_SHARED_LIBS)
+        list(APPEND OPTS_DEFINES ALLEGRO_STATICLINK)
+    endif()
     
-    foreach(d ${defines})
+    foreach(d ${OPTS_DEFINES})
         set_property(TARGET ${nm} APPEND PROPERTY COMPILE_DEFINITIONS ${d})
-    endforeach(d ${defines})
+    endforeach()
+
+    if(MSVC)
+        # Compile with multiple processors
+        set(msvc_flags "/MP")
+        if(WANT_STATIC_RUNTIME)
+            if(CMAKE_BUILD_TYPE STREQUAL Debug)
+                set(msvc_flags "${msvc_flags} /MTd")
+            else()
+                set(msvc_flags "${msvc_flags} /MT")
+            endif()
+        endif()
+        set_target_properties(${nm} PROPERTIES COMPILE_FLAGS "${msvc_flags}")
+    endif()
 
     if(MINGW)
         if(NOT CMAKE_BUILD_TYPE STREQUAL Debug)
             set_target_properties(${nm} PROPERTIES LINK_FLAGS "-Wl,-subsystem,windows")
-        endif(NOT CMAKE_BUILD_TYPE STREQUAL Debug)
-    endif(MINGW)
+        endif()
+    endif()
    
     fix_executable(${nm})
-endfunction(add_our_executable)
+endfunction()
+
+function(add_copy_commands src dest destfilesvar)
+    set(destfiles)
+    foreach(basename ${ARGN})
+        list(APPEND destfiles "${dest}/${basename}")
+        add_custom_command(
+            OUTPUT  "${dest}/${basename}"
+            DEPENDS "${src}/${basename}"
+            COMMAND "${CMAKE_COMMAND}" -E copy
+                    "${src}/${basename}" "${dest}/${basename}"
+            )
+    endforeach()
+    set(${destfilesvar} "${destfiles}" PARENT_SCOPE)
+endfunction()
 
 # Recreate data directory for out-of-source builds.
 # Note: a symlink is unsafe as make clean will delete the contents
@@ -261,37 +345,18 @@ endfunction(add_our_executable)
 #
 # Files are only copied if they don't are inside a .svn folder so we
 # won't end up with read-only .svn folders in the build folder.
-function(copy_data_dir_to_build target name destination)
+function(copy_data_dir_to_build target src dest)
     if(IPHONE)
         return()
     endif(IPHONE)
 
-    if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
+    if(src STREQUAL dest)
         return()
     endif()
 
-    file(GLOB_RECURSE allfiles RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*)
-
-    set(files)
-    # Filter out files inside .svn folders.
-    foreach(file ${allfiles})
-        string(REGEX MATCH .*\\.svn.* is_svn ${file})
-        if("${is_svn}" STREQUAL "")
-            list(APPEND files ${file})
-        endif()
-    endforeach(file)
-    
-    add_custom_target(${target} ALL DEPENDS ${files})
-
-    foreach(file ${files})
-        add_custom_command(
-            OUTPUT "${destination}/${file}"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${file}"
-            COMMAND "${CMAKE_COMMAND}" -E copy
-                    "${CMAKE_CURRENT_SOURCE_DIR}/${file}" "${destination}/${file}"
-            )
-    endforeach(file)
+    file(GLOB_RECURSE files RELATIVE "${src}" "${src}/*")
+    add_copy_commands("${src}" "${dest}" destfiles "${files}")
+    add_custom_target(${target} ALL DEPENDS ${destfiles})
 endfunction(copy_data_dir_to_build)
 
 macro(add_monolith_sources var addon sources)
@@ -335,6 +400,29 @@ macro(add_addon2 addon addon_target)
     set(MONOLITH_HEADERS ${MONOLITH_HEADERS} PARENT_SCOPE)
     set(MONOLITH_DEFINES ${MONOLITH_DEFINES} PARENT_SCOPE)
 endmacro(add_addon2)
+
+# Ensure that the default include system directories are added to the list of CMake implicit includes.
+# This workarounds an issue that happens when using GCC 6 and using system includes (-isystem).
+# For more details check: https://bugs.webkit.org/show_bug.cgi?id=161697
+macro(get_gcc_system_include_dirs _lang _compiler _flags _result)
+    file(WRITE "${CMAKE_BINARY_DIR}/CMakeFiles/dummy" "\n")
+    separate_arguments(_buildFlags UNIX_COMMAND "${_flags}")
+    execute_process(COMMAND ${_compiler} ${_buildFlags} -v -E -x ${_lang} -dD dummy
+                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/CMakeFiles OUTPUT_QUIET
+                    ERROR_VARIABLE _gccOutput)
+    file(REMOVE "${CMAKE_BINARY_DIR}/CMakeFiles/dummy")
+    if("${_gccOutput}" MATCHES "> search starts here[^\n]+\n *(.+) *\n *End of (search) list")
+        set(${_result} ${CMAKE_MATCH_1})
+        string(REPLACE "\n" " " ${_result} "${${_result}}")
+        separate_arguments(${_result})
+        set(canonical_paths "")
+        foreach(path IN ITEMS ${${_result}})
+            get_filename_component(canonical_path ${path} ABSOLUTE)
+            list(APPEND canonical_paths ${canonical_path})
+        endforeach()
+        set(${_result} ${canonical_paths})
+    endif()
+endmacro()
 
 #-----------------------------------------------------------------------------#
 # vim: set ft=cmake sts=4 sw=4 et:

@@ -45,12 +45,10 @@
    #include "allegro5/platform/alandroidcfg.h"
 #elif defined ALLEGRO_RASPBERRYPI
    #include "allegro5/platform/alraspberrypicfg.h"
-#elif defined ALLEGRO_PANDORA
-   #include "allegro5/platform/alpandoracfg.h"
-#elif defined ALLEGRO_ODROID
-   #include "allegro5/platform/alodroidcfg.h"
 #elif defined ALLEGRO_UNIX
    #include "allegro5/platform/alucfg.h"
+#elif defined ALLEGRO_SDL
+   #include "allegro5/platform/allegro_sdl_config.h"
 #else
    #error platform not supported
 #endif
@@ -109,12 +107,9 @@
       #endif
    #endif
    
-   #ifndef LONG_LONG
-      #define LONG_LONG       long long
-      #ifdef ALLEGRO_GUESS_INTTYPES_OK
-         #define int64_t      signed long long
-         #define uint64_t     unsigned long long
-      #endif
+   #ifdef ALLEGRO_GUESS_INTTYPES_OK
+      #define int64_t      signed long long
+      #define uint64_t     unsigned long long
    #endif
 
    #ifdef __i386__
@@ -227,46 +222,29 @@
    extern "C" {
 #endif
 
-
 /* endian-independent 3-byte accessor macros */
 #ifdef ALLEGRO_LITTLE_ENDIAN
 
-   #define READ3BYTES(p)  ((*(unsigned char *)(p))               \
-                           | (*((unsigned char *)(p) + 1) << 8)  \
-                           | (*((unsigned char *)(p) + 2) << 16))
+   #define _AL_READ3BYTES(p)   ((*(unsigned char *)(p))            \
+                             | (*((unsigned char *)(p) + 1) << 8)  \
+                             | (*((unsigned char *)(p) + 2) << 16))
 
-   #define WRITE3BYTES(p,c)  ((*(unsigned char *)(p) = (c)),             \
-                              (*((unsigned char *)(p) + 1) = (c) >> 8),  \
-                              (*((unsigned char *)(p) + 2) = (c) >> 16))
+   #define _AL_WRITE3BYTES(p,c) ((*(unsigned char *)(p) = (c)),             \
+                                 (*((unsigned char *)(p) + 1) = (c) >> 8),  \
+                                 (*((unsigned char *)(p) + 2) = (c) >> 16))
 
 #elif defined ALLEGRO_BIG_ENDIAN
 
-   #define READ3BYTES(p)  ((*(unsigned char *)(p) << 16)         \
-                           | (*((unsigned char *)(p) + 1) << 8)  \
-                           | (*((unsigned char *)(p) + 2)))
+   #define _AL_READ3BYTES(p)  ((*(unsigned char *)(p) << 16)       \
+                             | (*((unsigned char *)(p) + 1) << 8)  \
+                             | (*((unsigned char *)(p) + 2)))
 
-   #define WRITE3BYTES(p,c)  ((*(unsigned char *)(p) = (c) >> 16),       \
-                              (*((unsigned char *)(p) + 1) = (c) >> 8),  \
-                              (*((unsigned char *)(p) + 2) = (c)))
+   #define _AL_WRITE3BYTES(p,c) ((*(unsigned char *)(p) = (c) >> 16),       \
+                                 (*((unsigned char *)(p) + 1) = (c) >> 8),  \
+                                 (*((unsigned char *)(p) + 2) = (c)))
 
 #else
    #error endianess not defined
-#endif
-
-
-/* generic versions of the video memory access helpers */
-/* FIXME: why do we need macros for this? */
-#define bmp_write16(addr, c)        (*((uint16_t *)(addr)) = (c))
-#define bmp_write32(addr, c)        (*((uint32_t *)(addr)) = (c))
-
-#define bmp_read16(addr)            (*((uint16_t *)(addr)))
-#define bmp_read32(addr)            (*((uint32_t *)(addr)))
-
-
-
-/* default random function definition */
-#ifndef AL_RAND
-   #define AL_RAND()       (rand())
 #endif
 
 #ifdef __cplusplus

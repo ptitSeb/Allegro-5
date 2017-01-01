@@ -178,7 +178,8 @@ ALLEGRO_SAMPLE_INSTANCE *al_create_sample_instance(ALLEGRO_SAMPLE *sample_data)
    spl->mutex = NULL;
    spl->parent.u.ptr = NULL;
 
-   _al_kcm_register_destructor(spl, (void (*)(void *)) al_destroy_sample_instance);
+   spl->dtor_item = _al_kcm_register_destructor("sample_instance", spl,
+      (void (*)(void *))al_destroy_sample_instance);
 
    return spl;
 }
@@ -199,7 +200,7 @@ void _al_kcm_destroy_sample(ALLEGRO_SAMPLE_INSTANCE *spl, bool unregister)
 {
    if (spl) {
       if (unregister) {
-         _al_kcm_unregister_destructor(spl);
+         _al_kcm_unregister_destructor(spl->dtor_item);
       }
 
       _al_kcm_detach_from_parent(spl);
@@ -396,6 +397,7 @@ bool al_set_sample_instance_length(ALLEGRO_SAMPLE_INSTANCE *spl,
    }
 
    spl->spl_data.len = val;
+   spl->loop_end = val;
    return true;
 }
 
@@ -542,13 +544,9 @@ bool al_set_sample_instance_playing(ALLEGRO_SAMPLE_INSTANCE *spl, bool val)
 {
    ASSERT(spl);
 
-   if (!spl->parent.u.ptr) {
-      _al_set_error(ALLEGRO_INVALID_OBJECT, "Sample has no parent");
-      return false;
-   }
-   if (!spl->spl_data.buffer.ptr) {
-      _al_set_error(ALLEGRO_INVALID_OBJECT, "Sample has no data");
-      return false;
+   if (!spl->parent.u.ptr || !spl->spl_data.buffer.ptr) {
+      spl->is_playing = val;
+      return true;
    }
 
    if (spl->parent.is_voice) {

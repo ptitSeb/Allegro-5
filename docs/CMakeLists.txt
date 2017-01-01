@@ -15,60 +15,21 @@ mark_as_advanced(CTAGS)
 
 #-----------------------------------------------------------------------------#
 
-# Pandoc < 1.0 is usable but doesn't have Texinfo support.
-if(PANDOC AND NOT DEFINED PANDOC_WITH_TEXINFO)
+# Pandoc 1.10 changed handling of internal cross-references in Texinfo writer,
+# and LaTeX writer thereabouts.
+if(PANDOC)
     message(STATUS "Checking Pandoc version")
     execute_process(
         COMMAND ${PANDOC} --version
         OUTPUT_VARIABLE PANDOC_VERSION_TEXT
         ERROR_VARIABLE PANDOC_VERSION_TEXT
         )
-    if(PANDOC_VERSION_TEXT MATCHES "pandoc [1-9]")
-        set(PANDOC_WITH_TEXINFO 1 CACHE BOOL "Pandoc supports Texinfo")
+    if(PANDOC_VERSION_TEXT MATCHES "pandoc(.exe)? (1[.]1[0-9]|1[.][2-9][0-9]|[2-9])")
+        # message(STATUS "Pandoc version is compatible")
     else()
-        set(PANDOC_WITH_TEXINFO 0 CACHE BOOL "Pandoc supports Texinfo")
+        message(STATUS "Pandoc version is incompatible")
+        set(PANDOC 0)
     endif()
-    mark_as_advanced(PANDOC_WITH_TEXINFO)
-endif()
-
-# Pandoc 1.2 and 1.2.1 accidentally changed the way it generates HTML
-# identifiers.
-if(PANDOC AND NOT DEFINED PANDOC_STRIP_UNDERSCORES)
-    if(NOT PANDOC_VERSION_TEXT)
-        execute_process(
-            COMMAND ${PANDOC} --version
-            OUTPUT_VARIABLE PANDOC_VERSION_TEXT
-            ERROR_VARIABLE PANDOC_VERSION_TEXT
-            )
-    endif()
-    if(PANDOC_VERSION_TEXT MATCHES "pandoc 1[.]2(\n|[.]1)")
-        set(PANDOC_STRIP_UNDERSCORES 1 CACHE BOOL
-            "Pandoc strips underscores for HTML identifiers")
-    else()
-        set(PANDOC_STRIP_UNDERSCORES 0 CACHE BOOL
-            "Pandoc strips underscores for HTML identifiers")
-    endif()
-    mark_as_advanced(PANDOC_STRIP_UNDERSCORES)
-endif()
-
-# Pandoc 1.5 or later is required for LaTeX as it will begin
-# sectioning with \chapter.
-if(PANDOC AND NOT DEFINED PANDOC_FOR_LATEX)
-    if(NOT PANDOC_VERSION_TEXT)
-        execute_process(
-            COMMAND ${PANDOC} --version
-            OUTPUT_VARIABLE PANDOC_VERSION_TEXT
-            ERROR_VARIABLE PANDOC_VERSION_TEXT
-            )
-    endif()
-    if(PANDOC_VERSION_TEXT MATCHES "pandoc (0|1[.][01234][\n.])")
-        set(PANDOC_FOR_LATEX 0 CACHE BOOL
-            "Pandoc recent enough for LaTeX output")
-    else()
-        set(PANDOC_FOR_LATEX 1 CACHE BOOL
-            "Pandoc recent enough for LaTeX output")
-    endif()
-    mark_as_advanced(PANDOC_FOR_LATEX)
 endif()
 
 #-----------------------------------------------------------------------------#
@@ -107,7 +68,7 @@ function(pandoc source output) # extraargs...
     add_custom_command(
         OUTPUT  ${abs_output}
         DEPENDS ${abs_source}
-        COMMAND ${PANDOC} ${abs_source_native} --toc --standalone ${ARGN}
+        COMMAND ${PANDOC} ${abs_source_native} --from markdown --toc --standalone ${ARGN}
                 -o ${abs_output}
         )
 endfunction(pandoc source output)
@@ -136,16 +97,17 @@ endfunction(texi2text)
 if(PANDOC)
     pandoc(src/changes-5.0.txt html/changes-5.0.html -c pandoc.css)
     pandoc(src/changes-5.1.txt html/changes-5.1.html -c pandoc.css)
-endif(PANDOC)
+    pandoc(src/changes-5.2.txt html/changes-5.2.html -c pandoc.css)
 
-if(PANDOC_WITH_TEXINFO)
     pandoc(src/changes-5.0.txt texi/changes-5.0.texi)
     pandoc(src/changes-5.1.txt texi/changes-5.1.texi)
+    pandoc(src/changes-5.2.txt texi/changes-5.2.texi)
     if(MAKEINFO)
         texi2text(texi/changes-5.0.texi txt/changes-5.0.txt)
         texi2text(texi/changes-5.1.texi txt/changes-5.1.txt)
+        texi2text(texi/changes-5.2.texi txt/changes-5.2.txt)
     endif(MAKEINFO)
-endif(PANDOC_WITH_TEXINFO)
+endif(PANDOC)
 
 add_custom_target(docs
     ALL
@@ -157,6 +119,14 @@ add_custom_target(docs
 make_directory(${CMAKE_CURRENT_BINARY_DIR}/html/refman)
 make_directory(${CMAKE_CURRENT_BINARY_DIR}/txt)
 make_directory(${CMAKE_CURRENT_BINARY_DIR}/texi)
+make_directory(${CMAKE_CURRENT_BINARY_DIR}/latex)
+
+# Stick the ALLEGRO_VERSION into a file included by the latex template
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/refman/allegro_version.tex.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/latex/allegro_version.tex
+    @ONLY
+    )
 
 # Copy CSS files.
 configure_file(

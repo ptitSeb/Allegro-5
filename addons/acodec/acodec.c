@@ -26,6 +26,10 @@ bool al_init_acodec_addon(void)
    ret &= al_register_sample_saver_f(".wav", _al_save_wav_f);
    ret &= al_register_audio_stream_loader_f(".wav", _al_load_wav_audio_stream_f);
 
+   /* buil-in VOC loader */
+   ret &= al_register_sample_loader(".voc", _al_load_voc);
+   ret &= al_register_sample_loader_f(".voc", _al_load_voc_f);
+
 #ifdef ALLEGRO_CFG_ACODEC_FLAC
    ret &= al_register_sample_loader(".flac", _al_load_flac);
    ret &= al_register_audio_stream_loader(".flac", _al_load_flac_audio_stream);
@@ -49,6 +53,13 @@ bool al_init_acodec_addon(void)
    ret &= al_register_audio_stream_loader(".ogg", _al_load_ogg_vorbis_audio_stream);
    ret &= al_register_sample_loader_f(".ogg", _al_load_ogg_vorbis_f);
    ret &= al_register_audio_stream_loader_f(".ogg", _al_load_ogg_vorbis_audio_stream_f);
+#endif
+
+#ifdef ALLEGRO_CFG_ACODEC_OPUS
+   ret &= al_register_sample_loader(".opus", _al_load_ogg_opus);
+   ret &= al_register_audio_stream_loader(".opus", _al_load_ogg_opus_audio_stream);
+   ret &= al_register_sample_loader_f(".opus", _al_load_ogg_opus_f);
+   ret &= al_register_audio_stream_loader_f(".opus", _al_load_ogg_opus_audio_stream_f);
 #endif
 
    return ret;

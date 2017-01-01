@@ -3,16 +3,17 @@
 
 #include "allegro5/allegro.h"
 #include "allegro5/allegro_opengl.h"
-#include "allegro5/internal/aintern_iphone.h"
 #include "allegro5/internal/aintern_opengl.h"
 #include "allegro5/internal/aintern_vector.h"
 #include "allegro5/internal/aintern_pandora.h"
 #include "allegro5/internal/aintern_x.h"
 #include "allegro5/internal/aintern_xwindow.h"
 
+ALLEGRO_DEBUG_CHANNEL("display")
+
 #define PANDORA
 #define USE_EGL_RAW
-#ifdef ALLEGRO_CFG_NO_GLES2
+#ifndef ALLEGRO_CFG_OPENGLES2
 #define USE_GLES1
 #else
 #define USE_GLES2
@@ -29,37 +30,15 @@ static ALLEGRO_DISPLAY_INTERFACE *vt;
 struct ALLEGRO_DISPLAY_PANDORA_EXTRA {
 };
 
-void _al_pandora_setup_opengl_view(ALLEGRO_DISPLAY *d)
-{
-//printf("_al_pandora_setup_opengl_view(%x)\n", d);
-   glViewport(0, 0, d->w, d->h);
-
-   al_identity_transform(&d->proj_transform);
-   al_orthographic_transform(&d->proj_transform, 0, 0, -1, d->w, d->h, 1);
-
-   al_identity_transform(&d->view_transform);
-#ifdef ALLEGRO_CFG_NO_GLES2
-   if (!(d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
-      glMatrixMode(GL_PROJECTION);
-      glLoadMatrixf((float *)d->proj_transform.m);
-      glMatrixMode(GL_MODELVIEW);
-      glLoadMatrixf((float *)d->view_transform.m);
-   }
-#endif
-}
-
 /* Helper to set up GL state as we want it. */
 static void setup_gl(ALLEGRO_DISPLAY *d)
 {
-//printf("setup_gl(%x)\n", d);
     ALLEGRO_OGL_EXTRAS *ogl = d->ogl_extras;
 
     if (ogl->backbuffer)
         _al_ogl_resize_backbuffer(ogl->backbuffer, d->w, d->h);
     else
         ogl->backbuffer = _al_ogl_create_backbuffer(d);
-
-    _al_pandora_setup_opengl_view(d);
 }
 
 void _al_pandora_get_screen_info(int *dx, int *dy, int *screen_width, int *screen_height)
@@ -80,7 +59,7 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
     display->ogl_extras = ogl;
     display->vt = _al_get_pandora_display_interface();
     display->flags = al_get_new_display_flags();
-	#ifndef ALLEGRO_CFG_NO_GLES2
+	#ifdef ALLEGRO_CFG_OPENGLES2
 	display->flags |= ALLEGRO_PROGRAMMABLE_PIPELINE;
 	#endif
 //    if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
@@ -181,7 +160,7 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
 	output = glGetString(GL_EXTENSIONS);
 	printf( "GL_EXT: %s\n", output);
 	
-	#ifdef ALLEGRO_CFG_NO_GLES2
+	#ifndef ALLEGRO_CFG_OPENGLES2
 	// Create the glExtentions
 	printf("Attaching glExtension...\n");
 	glBlendEquation = (PFNGLBLENDEQUATIONOESPROC) eglGetProcAddress("glBlendEquationOES");
@@ -418,13 +397,32 @@ static bool pandora_hide_mouse_cursor(ALLEGRO_DISPLAY *display)
     return true;
 }
 
+void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
+   bool delay_hack)
+{
+   ALLEGRO_SYSTEM_ODROID *system = (void *)al_get_system_driver();
+   (void)d;
+   (void)old_resize_count;
+
+   ALLEGRO_DEBUG("Awaiting resize event\n");
+
+   XSync(system->x11display, False);
+
+   /* XXX: This hack helps when toggling between fullscreen windows and not,
+    * on various window managers.
+    */
+   if (delay_hack) {
+      al_rest(0.2);
+   }
+}
+
 /* Obtain a reference to this driver. */
 ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void)
 {
     if (vt)
         return vt;
     
-    vt = (ALLEGRO_DISPLAY_INTERFACE*)al_calloc(1, sizeof *vt);
+    vt = al_calloc(1, sizeof *vt);
     
     vt->create_display = pandora_create_display;
     vt->destroy_display = pandora_destroy_display;
@@ -449,17 +447,12 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void)
     vt->set_display_flag = pandora_set_display_flag;
     vt->wait_for_vsync = pandora_wait_for_vsync;
 
-
-    //vt->acknowledge_drawing_halt = _al_raspberrypi_acknowledge_drawing_halt;
     vt->update_render_state = _al_ogl_update_render_state;
 
     _al_ogl_add_drawing_functions(vt);
-    // stub mouse function
-    // add default X mouse functions
-//    _al_xwin_add_cursor_functions(vt);
+
     vt->set_mouse_cursor = pandora_set_mouse_cursor;
     vt->set_system_mouse_cursor = pandora_set_system_mouse_cursor;
-	// overload show/hide functions
     vt->show_mouse_cursor = pandora_show_mouse_cursor;
     vt->hide_mouse_cursor = pandora_hide_mouse_cursor;
     

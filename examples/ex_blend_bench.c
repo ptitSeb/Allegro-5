@@ -124,7 +124,7 @@ static bool do_test(enum Mode mode)
    return true;
 }
 
-int main(int argc, const char *argv[])
+int main(int argc, char **argv)
 {
    enum Mode mode = ALL;
    int i;
@@ -152,6 +152,7 @@ int main(int argc, const char *argv[])
 
    al_init_image_addon();
    al_init_primitives_addon();
+   init_platform_specific();
 
    display = al_create_display(640, 480);
    if (!display) {

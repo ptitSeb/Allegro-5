@@ -42,11 +42,13 @@ static void draw(ALLEGRO_JOYSTICK *curr_joy)
 
    if (curr_joy) {
       al_get_joystick_state(curr_joy, &joystate);
-      al_draw_filled_circle(
-            x+joystate.stick[0].axis[0]*20,
-            y+joystate.stick[0].axis[1]*20,
-            20, al_map_rgb(255, 255, 255)
+      for (i = 0; i < al_get_joystick_num_sticks(curr_joy); i++) {
+         al_draw_filled_circle(
+               x+joystate.stick[i].axis[0]*20 + i * 80,
+               y+joystate.stick[i].axis[1]*20,
+               20, al_map_rgb(255, 255, 255)
             );
+      }
       for (i = 0; i < al_get_joystick_num_buttons(curr_joy); i++) {
          if (joystate.button[i]) {
             al_draw_filled_circle(
@@ -59,12 +61,15 @@ static void draw(ALLEGRO_JOYSTICK *curr_joy)
    al_flip_display();
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    int num_joysticks;
    ALLEGRO_EVENT_QUEUE *queue;
    ALLEGRO_JOYSTICK *curr_joy;
    ALLEGRO_DISPLAY *display;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -119,7 +124,6 @@ int main(void)
          }
       }
       else if (event.type == ALLEGRO_EVENT_JOYSTICK_CONFIGURATION) {
-         int old = al_get_num_joysticks();
          al_reconfigure_joysticks();
          num_joysticks = al_get_num_joysticks();
          log_printf("after reconfiguration num joysticks = %d\n",
@@ -128,9 +132,7 @@ int main(void)
             log_printf("current joystick is: %s\n",
                al_get_joystick_active(curr_joy) ? "active" : "inactive");
          }
-         if (old < num_joysticks) {
-            curr_joy = al_get_joystick(0);
-         }
+         curr_joy = al_get_joystick(0);
       }
       else if (event.type == ALLEGRO_EVENT_JOYSTICK_AXIS) {
          log_printf("axis event from %p, stick %d, axis %d\n", event.joystick.id, event.joystick.stick, event.joystick.axis);
@@ -138,7 +140,11 @@ int main(void)
       else if (event.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_DOWN) {
          log_printf("button down event %d from %p\n",
             event.joystick.button, event.joystick.id);
-      }
+      } 
+      else if (event.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_UP) {
+         log_printf("button up event %d from %p\n",
+            event.joystick.button, event.joystick.id);
+      } 
 
       draw(curr_joy);
    }

@@ -3,7 +3,7 @@ typedef struct ALLEGRO_VIDEO_INTERFACE {
    bool (*open_video)(ALLEGRO_VIDEO *video);
    bool (*close_video)(ALLEGRO_VIDEO *video);
    bool (*start_video)(ALLEGRO_VIDEO *video);
-   bool (*pause_video)(ALLEGRO_VIDEO *video);
+   bool (*set_video_playing)(ALLEGRO_VIDEO *video);
    bool (*seek_video)(ALLEGRO_VIDEO *video, double seek_to);
    bool (*update_video)(ALLEGRO_VIDEO *video);
 } ALLEGRO_VIDEO_INTERFACE;
@@ -15,8 +15,8 @@ struct ALLEGRO_VIDEO {
    ALLEGRO_BITMAP *current_frame;
    double video_position;
    double fps;
-   int width, height;
-   double aspect_ratio;
+   float scaled_width;
+   float scaled_height;
 
    /* audio */
    ALLEGRO_MIXER *mixer;
@@ -29,11 +29,12 @@ struct ALLEGRO_VIDEO {
    bool es_inited;
    ALLEGRO_EVENT_SOURCE es;
    ALLEGRO_PATH *filename;
-   bool paused;
+   bool playing;
    double position;
 
    /* implementation specific */
    void *data;
 };
 
-extern ALLEGRO_VIDEO_INTERFACE *_al_video_vtable;
+ALLEGRO_VIDEO_INTERFACE *_al_video_ogv_vtable(void);
+void _al_compute_scaled_dimensions(int frame_w, int frame_h, float aspect_ratio, float *scaled_w, float *scaled_h);

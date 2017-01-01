@@ -2,7 +2,9 @@
 
 These functions are declared in the main Allegro header file:
 
-    #include <allegro5/allegro.h>
+~~~~c
+ #include <allegro5/allegro.h>
+~~~~
 
 ## API: ALLEGRO_TOUCH_INPUT
 
@@ -65,6 +67,9 @@ ALLEGRO_MOUSE_EMULATION_5_0_x
 
 Since: 5.1.0
 
+> *[Unstable API]:* Seems of limited value, as touch input tends to have different
+semantics compared to mouse input.
+
 ## API: al_install_touch_input
 
 Install a touch input driver, returning true if successful.  If a
@@ -104,6 +109,9 @@ Sets the kind of mouse emulation for the touch input subsystem to perform.
 
 Since: 5.1.0
 
+> *[Unstable API]:* Seems of limited value, as touch input tends to have different
+semantics compared to mouse input.
+
 See also: [ALLEGRO_MOUSE_EMULATION_MODE], [al_get_mouse_emulation_mode].
 
 ## API: al_get_mouse_emulation_mode
@@ -113,12 +121,15 @@ set to perform.
 
 Since: 5.1.0
 
+> *[Unstable API]:* Seems of limited value, as touch input tends to have different
+semantics compared to mouse input.
+
 See also: [ALLEGRO_MOUSE_EMULATION_MODE], [al_set_mouse_emulation_mode].
 
 ## API: al_get_touch_input_event_source
 
 Returns the global touch input event source.  This event source generates
-touch input events.
+[touch input events][ALLEGRO_EVENT_TOUCH_BEGIN].
 
 Since: 5.1.0
 
@@ -127,9 +138,12 @@ See also: [ALLEGRO_EVENT_SOURCE], [al_register_event_source]
 ## API: al_get_touch_input_mouse_emulation_event_source
 
 Returns the global touch input event source for emulated mouse events.
-This event source generates emulated mouse events that are based on touch
-events.
+This event source generates [emulated mouse events][ALLEGRO_EVENT_MOUSE_AXES]
+that are based on touch events.
 
 See also: [ALLEGRO_EVENT_SOURCE], [al_register_event_source]
 
 Since: 5.1.0
+
+> *[Unstable API]:* Seems of limited value, as touch input tends to have different
+semantics compared to mouse input.

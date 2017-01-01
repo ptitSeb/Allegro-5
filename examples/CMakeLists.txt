@@ -21,82 +21,79 @@ endif()
 
 #-----------------------------------------------------------------------------#
 
-# Conditionally build an example program.  If any of its arguments is the exact
-# string "x", do nothing.  Otherwise strip off the "x" prefixes on arguments
-# and call the example macro.
-function(example name)
-    set(is_console)
-    set(args)
-    foreach(arg ${ARGN})
-        if(arg STREQUAL "x")
-            message(STATUS "Not building ${name}")
-            return()
-        endif()
-        if(arg STREQUAL "CONSOLE")
-            set(is_console ON)
-        else()
-            string(REGEX REPLACE "^x" "" arg ${arg})
-            list(APPEND args ${arg})
-        endif()
-    endforeach(arg)
+# List dependencies explicitly for loading by Android APKs.
 
-    if(WIN32)
-        if(is_console)
-            # We need stdout and stderr available from cmd.exe,
-            # so we must not use WIN32 here.
-            set(EXECUTABLE_TYPE)
-        else()
-            set(EXECUTABLE_TYPE "WIN32")
-        endif(is_console)
-    endif(WIN32)
-
-    if(IPHONE)
-        set(EXECUTABLE_TYPE MACOSX_BUNDLE)
-    endif(IPHONE)
-
-    add_example(${name} ${args})
-endfunction(example)
-
-macro(add_example nm)
-    if(WANT_MONOLITH)
-        add_our_executable(${nm} ${ARGN} ${ALLEGRO_MONOLITH_LINK_WITH})
-    elseif(WANT_POPUP_EXAMPLES AND SUPPORT_NATIVE_DIALOG)
-        add_our_executable(${nm} ${ARGN} ${ALLEGRO_LINK_WITH} ${ALLEGRO_MAIN_LINK_WITH} ${NATIVE_DIALOG_LINK_WITH})
-    else()
-        add_our_executable(${nm} ${ARGN} ${ALLEGRO_LINK_WITH} ${ALLEGRO_MAIN_LINK_WITH} )
-    endif()
-endmacro(add_example nm)
-
-#-----------------------------------------------------------------------------#
-
-macro(set_link_with var maybe_link_with)
-    if(WANT_MONOLITH)
-        if (${maybe_link_with} STREQUAL "x")
-            set(${var} "x")
-        endif()
-    else(WANT_MONOLITH)
-        set(${var} ${maybe_link_with})
-    endif(WANT_MONOLITH)
-endmacro(set_link_with)
-
-set_link_with(AUDIO x${AUDIO_LINK_WITH})
-set_link_with(ACODEC x${ACODEC_LINK_WITH})
-set_link_with(COLOR x${COLOR_LINK_WITH})
-set_link_with(DIALOG x${NATIVE_DIALOG_LINK_WITH})
-set_link_with(FONT x${FONT_LINK_WITH})
-set_link_with(IMAGE x${IMAGE_LINK_WITH})
-set_link_with(MEMFILE x${MEMFILE_LINK_WITH})
-set_link_with(PHYSFS x${PHYSFS_LINK_WITH})
-set_link_with(PRIM x${PRIMITIVES_LINK_WITH})
-set_link_with(TTF x${TTF_LINK_WITH})
-set_link_with(VIDEO x${VIDEO_LINK_WITH})
-
+set(AUDIO x${AUDIO_LINK_WITH})
+set(ACODEC ${AUDIO} x${ACODEC_LINK_WITH})
+set(COLOR x${COLOR_LINK_WITH})
+set(DIALOG x${NATIVE_DIALOG_LINK_WITH})
+set(FONT x${FONT_LINK_WITH})
+set(IMAGE x${IMAGE_LINK_WITH})
+set(MEMFILE x${MEMFILE_LINK_WITH})
+set(PHYSFS x${PHYSFS_LINK_WITH})
+set(PRIM x${PRIMITIVES_LINK_WITH})
+set(TTF ${FONT} x${TTF_LINK_WITH})
+set(VIDEO x${VIDEO_LINK_WITH})
 set(NIHGUI nihgui.cpp ${FONT} ${PRIM})
 
+include(Helper.cmake)
+
 #-----------------------------------------------------------------------------#
 
-example(ex_config)
-example(ex_dir)
+# Lists of data files to add to Android APKs, to appear after the DATA keyword.
+# DATA_IMAGES is a special case that includes the DATA keyword.
+# Examples don't necessarily use every file in the list.
+
+set(DATA_IMAGES
+    DATA
+    a4_font.tga
+    alexlogo.bmp
+    alexlogo.png
+    allegro.pcx
+    bkg.png
+    bmpfont.tga
+    cursor.tga
+    fakeamp.bmp
+    fixed_font.tga
+    font.tga
+    haiku/air_effect.png
+    icon.tga
+    mysha.pcx
+    mysha256x256.png
+    obp.jpg
+    texture.tga
+    )
+
+set(DATA_TTF
+    DejaVuSans.ttf
+    )
+
+set(DATA_AUDIO
+    welcome.wav
+    welcome.voc
+    )
+
+set(DATA_SHADERS
+    ex_prim_shader_pixel.glsl
+    ex_prim_shader_pixel.hlsl
+    ex_prim_shader_vertex.glsl
+    ex_prim_shader_vertex.hlsl
+    ex_shader_multitex_pixel.glsl
+    ex_shader_multitex_pixel.hlsl
+    ex_shader_pixel.glsl
+    ex_shader_pixel.hlsl
+    ex_shader_vertex.glsl
+    ex_shader_vertex.hlsl
+    )
+
+file(GLOB DATA_HAIKU RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/data data/haiku/*)
+set(DATA_HAIKU ${DATA_HAIKU})
+
+#-----------------------------------------------------------------------------#
+
+example(ex_config DATA sample.cfg)
+example(ex_dir ${DATA_IMAGES})
+example(ex_file CONSOLE ${DATA_IMAGES})
 example(ex_file_slice CONSOLE)
 example(ex_get_path)
 example(ex_memfile CONSOLE ${MEMFILE})
@@ -104,117 +101,131 @@ example(ex_monitorinfo)
 example(ex_path)
 example(ex_path_test)
 example(ex_user_events)
+example(ex_inject_events)
 
 if(NOT MSVC)
     # UTF-8 strings are problematic under MSVC.
     example(ex_utf8)
 endif(NOT MSVC)
 
-example(ex_bitmap ${IMAGE})
-example(ex_bitmap_flip ${IMAGE} ${FONT})
-example(ex_bitmap_target ${FONT} ${IMAGE} ${PRIM})
-example(ex_blend ${FONT} ${IMAGE} ${PRIM})
-example(ex_blend2 ex_blend2.cpp ${NIHGUI} ${IMAGE})
-example(ex_blend_bench ${IMAGE} ${PRIM})
+example(ex_bitmap ${IMAGE} ${DATA_IMAGES})
+example(ex_bitmap_flip ${IMAGE} ${FONT} ${DATA_IMAGES})
+example(ex_blend ${FONT} ${IMAGE} ${PRIM} ${DATA_IMAGES})
+example(ex_blend2 ex_blend2.cpp ${NIHGUI} ${IMAGE} ${DATA_IMAGES})
+example(ex_blend_bench ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_blend_test ${PRIM})
-example(ex_blit ${FONT} ${IMAGE} ${COLOR})
-example(ex_clip ${FONT} ${IMAGE} ${COLOR})
-example(ex_color ex_color.cpp ${NIHGUI} ${TTF} ${COLOR})
+example(ex_blit ${FONT} ${IMAGE} ${COLOR} ${DATA_IMAGES})
+example(ex_clip ${FONT} ${COLOR})
+example(ex_clipboard ${IMAGE} ${FONT} ${DATA_IMAGES})
+example(ex_color ex_color.cpp ${NIHGUI} ${TTF} ${COLOR} DATA ${DATA_TTF})
+example(ex_compressed ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_convert CONSOLE ${IMAGE})
-example(ex_depth_mask ${IMAGE} ${TTF})
-example(ex_disable_screensaver ${FONT} ${IMAGE})
-example(ex_display_events ${FONT} ${IMAGE} ${PRIM})
-example(ex_display_options ${FONT} ${IMAGE} ${PRIM})
-example(ex_draw ${FONT} ${IMAGE} ${COLOR} ${PRIM})
-example(ex_draw_bitmap ${IMAGE} ${FONT})
+example(ex_cpu ${FONT})
+example(ex_depth_mask ${IMAGE} ${TTF} ${DATA_IMAGES} ${DATA_TTF})
+example(ex_depth_target ${IMAGE} ${FONT} ${COLOR} ${PRIM})
+example(ex_disable_screensaver ${FONT})
+example(ex_display_events ${FONT} ${PRIM})
+example(ex_display_options ${FONT} ${PRIM})
+example(ex_draw ${FONT} ${IMAGE} ${COLOR} ${PRIM} ${DATA_IMAGES})
+example(ex_draw_bitmap ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_drawpixels)
 example(ex_dualies ${IMAGE})
-example(ex_expose ${IMAGE} ${PRIM})
-example(ex_filter ${FONT} ${IMAGE} ${COLOR})
-example(ex_fs_resize ${IMAGE} ${PRIM})
-example(ex_fs_window ${IMAGE} ${PRIM} ${FONT})
-example(ex_icon ${IMAGE})
-example(ex_icon2 ${IMAGE})
+example(ex_expose ${IMAGE} ${PRIM} ${DATA_IMAGES})
+example(ex_filter ${FONT} ${IMAGE} ${COLOR} ${DATA_IMAGES})
+example(ex_fs_resize ${IMAGE} ${PRIM} ${DATA_IMAGES})
+example(ex_fs_window ${IMAGE} ${PRIM} ${FONT} ${DATA_IMAGES})
+example(ex_icon ${IMAGE} ${DATA_IMAGES})
+example(ex_icon2 ${IMAGE} ${DATA_IMAGES})
 example(ex_haptic ${PRIM})
-example(ex_haptic2 ex_haptic2.cpp ${NIHGUI} ${TTF})
+example(ex_haptic2 ex_haptic2.cpp ${NIHGUI} ${TTF} DATA ${DATA_TTF})
 example(ex_joystick_events ${PRIM} ${FONT})
 example(ex_joystick_hotplugging ${PRIM})
 example(ex_keyboard_events)
 example(ex_keyboard_focus)
 example(ex_lines ${PRIM})
-example(ex_loading_thread ${IMAGE} ${FONT} ${PRIM})
+example(ex_loading_thread ${IMAGE} ${FONT} ${PRIM} ${DATA_IMAGES})
 example(ex_lockbitmap)
-example(ex_membmp ${FONT} ${IMAGE})
-example(ex_mouse ${IMAGE} ${PRIM})
-example(ex_mouse_cursor ${FONT} ${IMAGE})
-example(ex_mouse_events ${FONT} ${IMAGE} ${PRIM})
+example(ex_membmp ${FONT} ${IMAGE} ${DATA_IMAGES})
+example(ex_mouse ${IMAGE} ${PRIM} ${DATA_IMAGES})
+example(ex_mouse_cursor ${FONT} ${IMAGE} ${DATA_IMAGES})
+example(ex_mouse_events ${FONT} ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_mouse_focus)
+example(ex_mouse_warp ${FONT} ${PRIM})
 example(ex_multisample ${FONT} ${COLOR} ${PRIM})
+example(ex_multisample_target ${IMAGE} ${FONT} ${COLOR} ${PRIM})
 example(ex_multiwin ${IMAGE})
-example(ex_nodisplay ${IMAGE})
-example(ex_noframe ${IMAGE})
-example(ex_physfs ${PHYSFS} ${IMAGE})
-example(ex_pixelformat ex_pixelformat.cpp ${NIHGUI} ${IMAGE})
+example(ex_nodisplay ${IMAGE} ${DATA_IMAGES})
+example(ex_noframe ${IMAGE} ${DATA_IMAGES})
+example(ex_physfs ${PHYSFS} ${IMAGE} ${DATA_IMAGES})
+example(ex_pixelformat ex_pixelformat.cpp ${NIHGUI} ${IMAGE} ${DATA_IMAGES})
 example(ex_polygon ${FONT} ${PRIM})
-example(ex_premulalpha ${IMAGE} ${FONT})
-example(ex_prim ${FONT} ${IMAGE} ${PRIM})
-example(ex_prim_shader ${PRIM})
+example(ex_premulalpha ${FONT})
+example(ex_prim ${FONT} ${IMAGE} ${PRIM} ${DATA_IMAGES})
+example(ex_prim_shader ${PRIM} DATA ${DATA_SHADERS})
+example(ex_reparent ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_resize ${PRIM})
-example(ex_resize2 ${IMAGE})
-example(ex_rotate ${IMAGE})
-example(ex_scale ${IMAGE})
-example(ex_shader ex_shader.cpp ${IMAGE})
-example(ex_shader_multitex ${IMAGE})
-example(ex_shader_target ${IMAGE})
-example(ex_subbitmap ${IMAGE} ${PRIM})
+example(ex_resize2 ${IMAGE} ${FONT})
+example(ex_rotate ${IMAGE} ${DATA_IMAGES})
+example(ex_scale ${IMAGE} ${DATA_IMAGES})
+example(ex_shader ex_shader.cpp ${IMAGE} ${DATA_IMAGES} ${DATA_SHADERS})
+example(ex_shader_multitex ${IMAGE} ${DATA_IMAGES} ${DATA_SHADERS})
+example(ex_shader_target ${IMAGE} ${DATA_IMAGES} ${DATA_SHADERS})
+example(ex_subbitmap ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_threads ${PRIM})
 example(ex_threads2)
 example(ex_timedwait)
-example(ex_timer ${FONT} ${IMAGE} ${PRIM})
-example(ex_transform ${FONT} ${IMAGE} ${PRIM})
+example(ex_timer ${FONT} ${PRIM})
+example(ex_timer_pause)
+example(ex_touch_input ${PRIM})
+example(ex_transform ${FONT} ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_vertex_buffer ${FONT} ${PRIM})
-example(ex_vsync ${FONT} ${IMAGE})
-example(ex_warp_mouse ${FONT} ${PRIM} ${IMAGE})
+example(ex_vsync ${FONT} ${IMAGE} ${PRIM})
 example(ex_windows ${FONT} ${IMAGE})
 example(ex_window_constraints ${FONT} ${IMAGE})
+example(ex_window_title ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_winfull)
 example(ex_video ${AUDIO} ${FONT} ${PRIM} ${VIDEO})
 
 if(WANT_D3D AND D3DX9_FOUND)
-    example(ex_d3d ex_d3d.cpp ${D3DX9_LIBRARY})
-endif(WANT_D3D AND D3DX9_FOUND)
+    example(ex_d3d ex_d3d.cpp EXTRA_LIBS ${D3DX9_LIBRARY})
+endif()
 
-if(SUPPORT_OPENGL AND NOT IPHONE AND NOT ALLEGRO_RASPBERRYPI AND NOT ALLEGRO_PANDORA AND NOT ALLEGRO_ODROID)
+if(SUPPORT_OPENGL AND NOT IPHONE AND NOT ANDROID AND NOT ALLEGRO_RASPBERRYPI AND NOT ALLEGRO_PANDORA AND NOT ALLEGRO_ODROID)
     example(ex_gldepth ${FONT} ${IMAGE})
     example(ex_glext)
     example(ex_opengl)
     example(ex_opengl_pixel_shader ${IMAGE})
-    example(ex_palette ${IMAGE} ${COLOR})
-endif(SUPPORT_OPENGL AND NOT IPHONE AND NOT ALLEGRO_RASPBERRYPI AND NOT ALLEGRO_PANDORA AND NOT ALLEGRO_ODROID)
+endif()
+if(SUPPORT_OPENGL AND NOT IPHONE AND NOT ALLEGRO_RASPBERRYPI AND NOT ALLEGRO_PANDORA AND NOT ALLEGRO_ODROID)
+    example(ex_palette ${IMAGE} ${COLOR} ${DATA_IMAGES})
+endif()
 
-example(ex_font ${FONT} ${IMAGE})
-example(ex_font_justify ex_font_justify.cpp ${NIHGUI} ${IMAGE} ${TTF})
-example(ex_logo ${FONT} ${TTF} ${IMAGE} ${PRIM})
-example(ex_projection ${TTF} ${PRIM} ${IMAGE})
-example(ex_ttf ${TTF} ${PRIM})
+example(ex_font ${FONT} ${IMAGE} ${DATA_IMAGES})
+example(ex_font_justify ex_font_justify.cpp ${NIHGUI} ${IMAGE} ${TTF} ${DATA_IMAGES} ${DATA_TTF})
+example(ex_font_multiline ex_font_multiline.cpp ${NIHGUI} ${IMAGE} ${TTF} ${COLOR} ${DATA_IMAGES} ${DATA_TTF})
+example(ex_logo ${FONT} ${TTF} ${IMAGE} ${PRIM} DATA ${DATA_TTF})
+example(ex_projection ${TTF} ${IMAGE} ${DATA_IMAGES} ${DATA_TTF})
+example(ex_projection2 ${PRIM} ${FONT} ${IMAGE} ${DATA_IMAGES})
+example(ex_camera ${FONT} ${COLOR} ${PRIM})
+example(ex_ttf ${TTF} ${PRIM} ${IMAGE} DATA ${DATA_TTF} ex_ttf.ini)
 
 example(ex_acodec CONSOLE ${AUDIO} ${ACODEC})
 example(ex_acodec_multi CONSOLE ${AUDIO} ${ACODEC})
-example(ex_audio_chain ex_audio_chain.cpp ${AUDIO} ${ACODEC} ${PRIM} ${FONT} ${TTF})
-example(ex_audio_props CONSOLE ex_audio_props.cpp ${NIHGUI} ${IMAGE} ${AUDIO} ${ACODEC})
+example(ex_audio_chain ex_audio_chain.cpp ${AUDIO} ${ACODEC} ${PRIM} ${FONT} ${TTF} DATA ${DATA_TTF} ${DATA_HAIKU})
+example(ex_audio_props ex_audio_props.cpp ${NIHGUI} ${ACODEC} DATA ${DATA_AUDIO})
 example(ex_audio_simple CONSOLE ${AUDIO} ${ACODEC})
 example(ex_audio_timer ${AUDIO} ${FONT})
-example(ex_haiku ${AUDIO} ${ACODEC} ${IMAGE})
+example(ex_haiku ${AUDIO} ${ACODEC} ${IMAGE} ${DATA_IMAGES} ${DATA_HAIKU})
 example(ex_kcm_direct CONSOLE ${AUDIO} ${ACODEC})
 example(ex_mixer_chain CONSOLE ${AUDIO} ${ACODEC})
-example(ex_mixer_pp ${AUDIO} ${ACODEC} ${PRIM} ${IMAGE})
+example(ex_mixer_pp ${AUDIO} ${ACODEC} ${PRIM} ${IMAGE} ${DATA_IMAGES} ${DATA_AUDIO})
 example(ex_record ${AUDIO} ${ACODEC} ${PRIM})
 example(ex_record_name ${AUDIO} ${ACODEC} ${PRIM} ${IMAGE} ${FONT})
 example(ex_resample_test ${AUDIO})
 example(ex_saw ${AUDIO})
 example(ex_stream_file CONSOLE ${AUDIO} ${ACODEC})
-example(ex_stream_seek CONSOLE ${AUDIO} ${ACODEC} ${PRIM} ${FONT} ${IMAGE})
-example(ex_synth ex_synth.cpp ${NIHGUI} ${AUDIO} ${TTF})
+example(ex_stream_seek ${AUDIO} ${ACODEC} ${PRIM} ${FONT} ${IMAGE} ${DATA_IMAGES} ${DATA_AUDIO})
+example(ex_synth ex_synth.cpp ${NIHGUI} ${AUDIO} ${TTF} DATA ${DATA_TTF})
 
 example(ex_native_filechooser ${DIALOG} ${FONT} ${IMAGE} ${COLOR})
 example(ex_menu ${DIALOG} ${IMAGE})
@@ -227,22 +238,28 @@ if(WANT_CURL_EXAMPLE)
     if(CURL_FOUND)
         if(WIN32)
             # select() is in the Winsock library.
-            example(ex_curl ${CURL_LIBRARIES} ${IMAGE} ws2_32)
+            example(ex_curl ${IMAGE} EXTRA_LIBS ${CURL_LIBRARIES} ws2_32)
         else(WIN32)
-            example(ex_curl ${CURL_LIBRARIES} ${IMAGE})
+            example(ex_curl ${IMAGE} EXTRA_LIBS ${CURL_LIBRARIES})
         endif(WIN32)
     endif(CURL_FOUND)
 endif(WANT_CURL_EXAMPLE)
 
-# Not yet added:
-# ex_gp2x
-# ex_iphone
+# Only build the enet examples if libenet is installed
+find_package(ENet)
+if(ENET_FOUND)
+    example(ex_enet_client ${PRIM} EXTRA_LIBS ${ENET_LIBRARIES})
+    example(ex_enet_server EXTRA_LIBS ${ENET_LIBRARIES})
+endif()
 
 # example(ex_ogre3d ex_ogre3d.cpp)
 # include_directories(/usr/include/OGRE)
 # target_link_libraries(ex_ogre3d OgreMain)
 
-copy_data_dir_to_build(copy_example_data data .)
+copy_data_dir_to_build(copy_example_data
+    "${CMAKE_CURRENT_SOURCE_DIR}/data"
+    "${CMAKE_CURRENT_BINARY_DIR}/data"
+    )
 
 # This is useful for developers to add temporary test programs.
 include(${CMAKE_CURRENT_SOURCE_DIR}/local_examples.cmake OPTIONAL)

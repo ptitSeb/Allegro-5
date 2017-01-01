@@ -1,3 +1,5 @@
+#define ALLEGRO_UNSTABLE
+
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_opengl.h>
 #include <allegro5/allegro_image.h>
@@ -8,7 +10,7 @@
 GLhandleARB tinter;
 GLhandleARB tinter_shader;
 
-int main(void)
+int main(int argc, char **argv)
 {
    float r = 0.5, g = 0.5, b = 1, ratio = 0;
    int dir = 1;
@@ -39,6 +41,9 @@ int main(void)
    const int TINTER_LEN = 18;
    double start;
    GLint loc;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro\n");

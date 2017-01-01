@@ -13,7 +13,7 @@ types = {}
 anonymous_enums = {}
 functions = {}
 constants = {}
-
+sections = {}
 
 def check_references():
     """
@@ -32,10 +32,16 @@ def check_references():
     for doc in docs:
         text = file(doc).read()
         text = re.compile("<script.*?>.*?</script>", re.S).sub("", text)
-        for link in re.findall(r" \[(.*?)\][^(]", text):
+        # in case of [A][B], we will not see A but we do see B.
+        for link in re.findall(r" \[([^[]*?)\][^([]", text):
             if not link in links:
                 print("Missing: %s: %s" % (doc, link))
+        for section in re.findall(r"^#+ (.*)", text, re.MULTILINE):
+           if not section.startswith("API:"):
+              sections[section] = 1
 
+    for link in sections.keys():
+        del links[link]
 
 def add_struct(line):
     if options.protos:
@@ -116,12 +122,14 @@ def parse_header(lines, filename):
             brace += subline.count("{")
             brace += subline.count("(")
 
-            if brace == 0 and subline.endswith(";") or subline.endswith("}"):
+            if cline:
+                if cline[-1].isalnum():
+                    cline += " "
                 cline += subline
+            if brace == 0 and subline.endswith(";") or subline.endswith("}"):
+                
                 lines2.append(cline.strip())
                 cline = ""
-            else:
-                cline += subline
 
     for line in lines2:
         line = line.replace("__attribute__((__stdcall__))", "")
@@ -167,7 +175,7 @@ def parse_header(lines, filename):
                     if not fname in functions:
                         functions[fname] = line
                     n += 1
-            except AttributeError, e:
+            except AttributeError as e:
                 print("Cannot parse in " + filename)
                 print("Line is: " + line)
                 print(e)
@@ -199,9 +207,10 @@ def parse_all_headers():
     for header in headers:
         p = subprocess.Popen(options.compiler + " -E -dD - " + includes,
             stdout=subprocess.PIPE, stdin=subprocess.PIPE, shell=True)
-        p.stdin.write("#include <allegro5/allegro.h>\n" + open(header).read())
+        filename = "#include <allegro5/allegro.h>\n" + open(header).read()
+        p.stdin.write(filename.encode('utf-8'))
         p.stdin.close()
-        text = p.stdout.read()
+        text = p.stdout.read().decode("utf-8")
         parse_header(text.splitlines(), header)
         #print("%d definitions in %s" % (n, header))
 

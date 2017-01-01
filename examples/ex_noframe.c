@@ -5,7 +5,7 @@
 
 #include "common.c"
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *bitmap;
@@ -15,6 +15,9 @@ int main(void)
    int down_x = 0, down_y = 0;
    ALLEGRO_TIMER *timer;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
@@ -22,6 +25,7 @@ int main(void)
    al_install_mouse();
    al_install_keyboard();
    al_init_image_addon();
+   init_platform_specific();
 
    al_set_new_display_flags(ALLEGRO_FRAMELESS);
    display = al_create_display(300, 200);

@@ -1,12 +1,14 @@
 package org.liballeg.example;
 
-import org.liballeg.app.AllegroActivity;
+import org.liballeg.android.AllegroActivity;
 
 public class ExampleActivity extends AllegroActivity {
 
-   /* load allegro */
+   /* Load Allegro and other shared libraries in the lib directory of the apk
+    * bundle.  You must load libraries which are required by later libraries
+    * first.
+    */
    static {
-      /* FIXME: see if we can't load the allegro library name, or type from the manifest here */
       System.loadLibrary("allegro-debug");
       System.loadLibrary("allegro_primitives-debug");
       System.loadLibrary("allegro_image-debug");
@@ -17,4 +19,11 @@ public class ExampleActivity extends AllegroActivity {
       //System.loadLibrary("allegro_monolith-debug");
    }
 
+   /* By default, AllegroActivity.onCreate will cause Allegro to load the
+    * shared object `libapp.so'.  You can specify another library name by
+    * overriding the constructor.
+    */
+   public ExampleActivity() {
+      super("libexample.so");
+   }
 }

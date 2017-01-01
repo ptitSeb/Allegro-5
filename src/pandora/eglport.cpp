@@ -30,7 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef ALLEGRO_CFG_NO_GLES2
+#ifndef ALLEGRO_CFG_OPENGLES2
 #define USE_GLES1	1
 #else
 #define USE_GLES2	1

@@ -195,7 +195,7 @@ static bool wav_stream_seek(ALLEGRO_AUDIO_STREAM * stream, double time)
    if (time >= wavfile->loop_end)
       return false;
    cpos += cpos % align;
-   return (al_fseek(wavfile->f, wavfile->dpos + cpos, ALLEGRO_SEEK_SET) != -1);
+   return al_fseek(wavfile->f, wavfile->dpos + cpos, ALLEGRO_SEEK_SET);
 }
 
 
@@ -373,7 +373,6 @@ ALLEGRO_AUDIO_STREAM *_al_load_wav_audio_stream_f(ALLEGRO_FILE* f,
       stream->extra = wavfile;
       wavfile->loop_start = 0.0;
       wavfile->loop_end = wav_stream_get_length(stream);
-      stream->feed_thread = al_create_thread(_al_kcm_feed_stream, stream);
       stream->feeder = wav_stream_update;
       stream->unload_feeder = wav_stream_close;
       stream->rewind_feeder = wav_stream_rewind;
@@ -381,7 +380,7 @@ ALLEGRO_AUDIO_STREAM *_al_load_wav_audio_stream_f(ALLEGRO_FILE* f,
       stream->get_feeder_position = wav_stream_get_position;
       stream->get_feeder_length = wav_stream_get_length;
       stream->set_feeder_loop = wav_stream_set_loop;
-      al_start_thread(stream->feed_thread);
+      _al_acodec_start_feed_thread(stream);
    }
    else {
       wav_close(wavfile);
@@ -400,9 +399,9 @@ bool _al_save_wav(const char *filename, ALLEGRO_SAMPLE *spl)
    ALLEGRO_FILE *pf = al_fopen(filename, "wb");
 
    if (pf) {
-      bool rv = _al_save_wav_f(pf, spl);
-      al_fclose(pf);
-      return rv;
+      bool rvsave = _al_save_wav_f(pf, spl);
+      bool rvclose = al_fclose(pf);
+      return rvsave && rvclose;
    }
 
    return false;   
@@ -443,11 +442,11 @@ bool _al_save_wav_f(ALLEGRO_FILE *pf, ALLEGRO_SAMPLE *spl)
    al_fputs(pf, "fmt ");
    al_fwrite32le(pf, 16);
    al_fwrite16le(pf, 1);
-   al_fwrite16le(pf, channels);
+   al_fwrite16le(pf, (int16_t)channels);
    al_fwrite32le(pf, spl->frequency);
    al_fwrite32le(pf, spl->frequency * channels * bits / 8);
-   al_fwrite16le(pf, channels * bits / 8);
-   al_fwrite16le(pf, bits);
+   al_fwrite16le(pf, (int16_t)(channels * bits / 8));
+   al_fwrite16le(pf, (int16_t)bits);
 
    al_fputs(pf, "data");
    al_fwrite32le(pf, data_size);

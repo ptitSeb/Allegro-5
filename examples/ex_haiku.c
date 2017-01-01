@@ -10,6 +10,7 @@
  * the nice title sequence, text labels and mouse cursors.
  */
 
+#define ALLEGRO_UNSTABLE
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_audio.h>
 #include <allegro5/allegro_acodec.h>
@@ -758,16 +759,6 @@ static Token *get_touched_button(float x, float y)
    return NULL;
 }
 
-static void select_token(Token *token)
-{
-   if (token->type == TYPE_NONE && selected_button) {
-      Sprite *spr = &token->top;
-      spr->image = selected_button->type;
-      anim_to(spr, &spr->opacity, 1.0, INTERP_FAST, 0.15);
-      token->type = selected_button->type;
-   }
-}
-
 static void unselect_token(Token *token)
 {
    if (token->type != TYPE_NONE) {
@@ -783,6 +774,25 @@ static void unselect_all_tokens(void)
 
    for (i = 0; i < NUM_TOKENS; i++)
       unselect_token(&tokens[i]);
+}
+
+static void select_token(Token *token)
+{
+   unsigned prev_type;
+
+   if (!selected_button)
+      return;
+
+   prev_type = token->type;
+   unselect_token(token);
+
+   /* Unselect only if same type, for touch input. */
+   if (prev_type != selected_button->type) {
+      Sprite *spr = &token->top;
+      spr->image = selected_button->type;
+      anim_to(spr, &spr->opacity, 1.0, INTERP_FAST, 0.15);
+      token->type = selected_button->type;
+   }
 }
 
 static void change_healthy_glow(int type, float x)
@@ -915,9 +925,12 @@ static void main_loop(ALLEGRO_EVENT_QUEUE *queue)
    }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_EVENT_QUEUE *queue;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Error initialising Allegro.\n");
@@ -927,6 +940,7 @@ int main(void)
    }
    al_init_acodec_addon();
    al_init_image_addon();
+   init_platform_specific();
 
    al_set_new_bitmap_flags(ALLEGRO_MIN_LINEAR | ALLEGRO_MAG_LINEAR);
 
@@ -956,6 +970,10 @@ int main(void)
    al_register_event_source(queue, al_get_mouse_event_source());
    al_register_event_source(queue, al_get_timer_event_source(refresh_timer));
    al_register_event_source(queue, al_get_timer_event_source(playback_timer));
+   if (al_is_touch_input_installed()) {
+      al_register_event_source(queue,
+         al_get_touch_input_mouse_emulation_event_source());
+   }
 
    al_start_timer(refresh_timer);
    al_start_timer(playback_timer);

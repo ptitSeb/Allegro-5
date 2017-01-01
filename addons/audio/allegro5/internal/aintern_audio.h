@@ -6,8 +6,45 @@
 #define AINTERN_AUDIO_H
 
 #include "allegro5/allegro.h"
+#include "allegro5/internal/aintern_list.h"
 #include "allegro5/internal/aintern_vector.h"
 #include "../allegro_audio.h"
+
+struct ALLEGRO_AUDIO_RECORDER {
+  ALLEGRO_EVENT_SOURCE source;
+  
+  ALLEGRO_THREAD           *thread;
+  ALLEGRO_MUTEX            *mutex;
+  ALLEGRO_COND             *cond;
+                           /* recording is done in its own thread as
+                              implemented by the driver */
+  
+  ALLEGRO_AUDIO_DEPTH      depth;
+  ALLEGRO_CHANNEL_CONF     chan_conf;
+  unsigned int             frequency;
+
+  void                     **fragments;
+                           /* the buffers to record into */
+
+  unsigned int             fragment_count;
+                           /* the number of fragments */
+
+  unsigned int             samples;
+                           /* the number of samples returned at every FRAGMENT event */
+                           
+  size_t                   fragment_size;
+                           /* size in bytes of each fragument */
+
+  unsigned int             sample_size;
+                           /* the size in bytes of each sample */
+  
+  volatile bool            is_recording; 
+                           /* true if the driver should actively be updating
+                              the buffer */
+                              
+  void                     *extra;
+                           /* custom data for the driver to use as needed */
+};
 
 typedef enum ALLEGRO_AUDIO_DRIVER_ENUM
 {
@@ -19,7 +56,8 @@ typedef enum ALLEGRO_AUDIO_DRIVER_ENUM
    ALLEGRO_AUDIO_DRIVER_OSS        = 0x20004,
    ALLEGRO_AUDIO_DRIVER_AQUEUE     = 0x20005,
    ALLEGRO_AUDIO_DRIVER_PULSEAUDIO = 0x20006,
-   ALLEGRO_AUDIO_DRIVER_OPENSL     = 0x20007
+   ALLEGRO_AUDIO_DRIVER_OPENSL     = 0x20007,
+   ALLEGRO_AUDIO_DRIVER_SDL        = 0x20008
 } ALLEGRO_AUDIO_DRIVER_ENUM;
 
 typedef struct ALLEGRO_AUDIO_DRIVER ALLEGRO_AUDIO_DRIVER;
@@ -44,14 +82,16 @@ struct ALLEGRO_AUDIO_DRIVER {
    int            (*set_voice_position)(ALLEGRO_VOICE*, unsigned int);
    
    
-   int            (*allocate_recorder)(ALLEGRO_AUDIO_RECORDER *);
-   void           (*deallocate_recorder)(ALLEGRO_AUDIO_RECORDER *);
+   int            (*allocate_recorder)(struct ALLEGRO_AUDIO_RECORDER *);
+   void           (*deallocate_recorder)(struct ALLEGRO_AUDIO_RECORDER *);
 };
 
 extern ALLEGRO_AUDIO_DRIVER *_al_kcm_driver;
 
-const void *_al_voice_update(ALLEGRO_VOICE *voice, unsigned int *samples);
-bool _al_kcm_set_voice_playing(ALLEGRO_VOICE *voice, bool val);
+const void *_al_voice_update(ALLEGRO_VOICE *voice, ALLEGRO_MUTEX *mutex,
+   unsigned int *samples);
+bool _al_kcm_set_voice_playing(ALLEGRO_VOICE *voice, ALLEGRO_MUTEX *mutex,
+   bool val);
 
 /* A voice structure that you'd attach a mixer or sample to. Ideally there
  * would be one ALLEGRO_VOICE per system/hardware voice.
@@ -76,6 +116,8 @@ struct ALLEGRO_VOICE {
 
    ALLEGRO_MUTEX        *mutex;
    ALLEGRO_COND         *cond;
+
+   _AL_LIST_ITEM        *dtor_item;
 
    ALLEGRO_AUDIO_DRIVER *driver;
                         /* XXX shouldn't there only be one audio driver active
@@ -108,6 +150,7 @@ struct ALLEGRO_SAMPLE {
                         /* Whether `buffer' needs to be freed when the sample
                          * is destroyed, or when `buffer' changes.
                          */
+   _AL_LIST_ITEM        *dtor_item;
 };
 
 /* Read some samples into a mixer buffer.
@@ -193,6 +236,7 @@ struct ALLEGRO_SAMPLE_INSTANCE {
    sample_parent_t      parent;
                         /* The object that this sample is attached to, if any.
                          */
+   _AL_LIST_ITEM        *dtor_item;
 };
 
 void _al_kcm_destroy_sample(ALLEGRO_SAMPLE_INSTANCE *sample, bool unregister);
@@ -246,7 +290,15 @@ struct ALLEGRO_AUDIO_STREAM {
                           * played.
                           */
 
+   uint64_t              consumed_fragments;
+                         /* Number of complete fragment buffers consumed since
+                          * the stream was started.
+                          */
+
    ALLEGRO_THREAD        *feed_thread;
+   ALLEGRO_MUTEX         *feed_thread_started_mutex;
+   ALLEGRO_COND          *feed_thread_started_cond;
+   bool                  feed_thread_started;
    volatile bool         quit_feed_thread;
    unload_feeder_t       unload_feeder;
    rewind_feeder_t       rewind_feeder;
@@ -260,6 +312,8 @@ struct ALLEGRO_AUDIO_STREAM {
                           * by a thread using the 'feeder' callback. Such
                           * streams don't need to be fed by the user.
                           */
+
+   _AL_LIST_ITEM        *dtor_item;
 
    void                  *extra;
                          /* Extra data for use by the flac/vorbis addons. */
@@ -290,6 +344,7 @@ struct ALLEGRO_MIXER {
                            /* Vector of ALLEGRO_SAMPLE_INSTANCE*.  Holds the list of
                             * streams being mixed together.
                             */
+   _AL_LIST_ITEM           *dtor_item;
 };
 
 extern void _al_kcm_mixer_rejig_sample_matrix(ALLEGRO_MIXER *mixer,
@@ -308,7 +363,6 @@ typedef enum {
 extern void _al_set_error(int error, char* string);
 
 /* Supposedly internal */
-ALLEGRO_KCM_AUDIO_FUNC(int, _al_kcm_get_silence, (ALLEGRO_AUDIO_DEPTH depth));
 ALLEGRO_KCM_AUDIO_FUNC(void*, _al_kcm_feed_stream, (ALLEGRO_THREAD *self, void *vstream));
 
 /* Helper to emit an event that the stream has got a buffer ready to be refilled. */
@@ -316,8 +370,9 @@ void _al_kcm_emit_stream_events(ALLEGRO_AUDIO_STREAM *stream);
 
 void _al_kcm_init_destructors(void);
 void _al_kcm_shutdown_destructors(void);
-void _al_kcm_register_destructor(void *object, void (*func)(void*));
-void _al_kcm_unregister_destructor(void *object);
+_AL_LIST_ITEM *_al_kcm_register_destructor(char const *name, void *object,
+   void (*func)(void*));
+void _al_kcm_unregister_destructor(_AL_LIST_ITEM *dtor_item);
 void _al_kcm_foreach_destructor(
       void (*callback)(void *object, void (*func)(void *), void *udata),
       void *userdata);
@@ -328,48 +383,6 @@ ALLEGRO_KCM_AUDIO_FUNC(ALLEGRO_CHANNEL_CONF, _al_count_to_channel_conf, (int num
 ALLEGRO_KCM_AUDIO_FUNC(ALLEGRO_AUDIO_DEPTH, _al_word_size_to_depth_conf, (int word_size));
 
 ALLEGRO_KCM_AUDIO_FUNC(void, _al_emit_audio_event, (int event_type));
-
-
-/*
- * Recording
- */
- 
-struct ALLEGRO_AUDIO_RECORDER {
-  ALLEGRO_EVENT_SOURCE source;
-  
-  ALLEGRO_THREAD           *thread;
-  ALLEGRO_MUTEX            *mutex;
-  ALLEGRO_COND             *cond;
-                           /* recording is done in its own thread as
-                              implemented by the driver */
-  
-  ALLEGRO_AUDIO_DEPTH      depth;
-  ALLEGRO_CHANNEL_CONF     chan_conf;
-  unsigned int             frequency;
-
-  void                     **fragments;
-                           /* the buffers to record into */
-
-  unsigned int             fragment_count;
-                           /* the number of fragments */
-
-  unsigned int             samples;
-                           /* the number of samples returned at every FRAGMENT event */
-                           
-  size_t                   fragment_size;
-                           /* size in bytes of each fragument */
-
-  unsigned int             sample_size;
-                           /* the size in bytes of each sample */
-  
-  volatile bool            is_recording; 
-                           /* true if the driver should actively be updating
-                              the buffer */
-                              
-  void                     *extra;
-                           /* custom data for the driver to use as needed */
-};
-
 
 #endif
 

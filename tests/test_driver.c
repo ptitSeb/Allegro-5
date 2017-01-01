@@ -70,6 +70,7 @@ int               verbose = 0;
 int               total_tests = 0;
 int               passed_tests = 0;
 int               failed_tests = 0;
+int               skipped_tests = 0;
 
 #define streq(a, b)  (0 == strcmp((a), (b)))
 
@@ -116,7 +117,7 @@ int               failed_tests = 0;
       (sscanf(stmt, PAT " = " fn " (" PAT##arity " )", lval, ARGS##arity) \
          == 1 + arity)
 
-static void error(char const *msg, ...)
+static void fatal_error(char const *msg, ...)
 {
    va_list ap;
 
@@ -124,7 +125,6 @@ static void error(char const *msg, ...)
    fprintf(stderr, "test_driver: ");
    vfprintf(stderr, msg, ap);
    fprintf(stderr, "\n");
-   fprintf(stderr, "See --help for usage\n");
    va_end(ap);
    exit(EXIT_FAILURE);
 }
@@ -138,13 +138,36 @@ static char const *bmp_type_to_string(BmpType bmp_type)
    return "error";
 }
 
+static ALLEGRO_BITMAP *create_fallback_bitmap(void)
+{
+   ALLEGRO_BITMAP *bmp = al_create_bitmap(256, 256);
+   ALLEGRO_FONT *builtin_font = al_create_builtin_font();
+   ALLEGRO_STATE state;
+
+   if (!bmp) {
+      fatal_error("couldn't create a backup bitmap");
+   }
+   if (!builtin_font) {
+      fatal_error("couldn't create a builtin font");
+   }
+   al_store_state(&state, ALLEGRO_STATE_BITMAP);
+   al_set_target_bitmap(bmp);
+   al_clear_to_color(al_map_rgb_f(0.5, 0, 0));
+   al_draw_text(builtin_font, al_map_rgb_f(1, 1, 1), 0, 0, 0, "fallback");
+   al_restore_state(&state);
+   al_destroy_font(builtin_font);
+
+   return bmp;
+}
+
 static ALLEGRO_BITMAP *load_relative_bitmap(char const *filename, int flags)
 {
    ALLEGRO_BITMAP *bmp;
 
    bmp = al_load_bitmap_flags(filename, flags);
    if (!bmp) {
-      error("failed to load %s", filename);
+      fprintf(stderr, "test_driver: failed to load %s\n", filename);
+      bmp = create_fallback_bitmap();
    }
    return bmp;
 }
@@ -169,7 +192,7 @@ static void load_bitmaps(ALLEGRO_CONFIG const *cfg, const char *section,
    }
 
    if (i == MAX_BITMAPS)
-      error("bitmap limit reached");
+      fatal_error("bitmap limit reached");
 
    num_global_bitmaps = i;
 }
@@ -185,7 +208,7 @@ static ALLEGRO_BITMAP **reserve_local_bitmap(const char *name, BmpType bmp_type)
       }
    }
 
-   error("bitmap limit reached");
+   fatal_error("bitmap limit reached");
    return NULL;
 }
 
@@ -219,6 +242,8 @@ static void set_target_reset(ALLEGRO_BITMAP *target)
    al_set_blender(ALLEGRO_ADD, ALLEGRO_ONE, ALLEGRO_ZERO);
    al_identity_transform(&ident);
    al_use_transform(&ident);
+   al_orthographic_transform(&ident, 0, 0, -1, al_get_bitmap_width(target), al_get_bitmap_height(target), 1);
+   al_use_projection_transform(&ident);
 }
 
 static char const *resolve_var(ALLEGRO_CONFIG const *cfg, char const *section,
@@ -262,7 +287,7 @@ static ALLEGRO_BITMAP *get_bitmap(char const *value, BmpType bmp_type,
    if (streq(value, "0") || streq(value, "NULL"))
       return NULL;
 
-   error("undefined bitmap: %s", value);
+   fatal_error("undefined bitmap: %s", value);
    return NULL;
 }
 
@@ -306,6 +331,8 @@ static int get_blend_factor(char const *value)
       : streq(value, "ALLEGRO_DEST_COLOR") ? ALLEGRO_DEST_COLOR
       : streq(value, "ALLEGRO_INVERSE_SRC_COLOR") ? ALLEGRO_INVERSE_SRC_COLOR
       : streq(value, "ALLEGRO_INVERSE_DEST_COLOR") ? ALLEGRO_INVERSE_DEST_COLOR
+      : streq(value, "ALLEGRO_CONST_COLOR") ? ALLEGRO_CONST_COLOR
+      : streq(value, "ALLEGRO_INVERSE_CONST_COLOR") ? ALLEGRO_INVERSE_CONST_COLOR
       : atoi(value);
 }
 
@@ -324,7 +351,7 @@ static ALLEGRO_TRANSFORM *get_transform(const char *name)
          return &transforms[i].transform;
    }
 
-   error("transforms limit reached");
+   fatal_error("transforms limit reached");
    return NULL;
 }
 
@@ -357,9 +384,12 @@ static int get_pixel_format(char const *v)
       : streq(v, "ALLEGRO_PIXEL_FORMAT_ABGR_F32") ? ALLEGRO_PIXEL_FORMAT_ABGR_F32
       : streq(v, "ALLEGRO_PIXEL_FORMAT_ABGR_8888_LE") ? ALLEGRO_PIXEL_FORMAT_ABGR_8888_LE
       : streq(v, "ALLEGRO_PIXEL_FORMAT_RGBA_4444") ? ALLEGRO_PIXEL_FORMAT_RGBA_4444
+      : streq(v, "ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1") ? ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1
+      : streq(v, "ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT3") ? ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT3
+      : streq(v, "ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT5") ? ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT5
       : -1;
    if (format == -1)
-      error("invalid format: %s", v);
+      fatal_error("invalid format: %s", v);
    return format;
 }
 
@@ -446,7 +476,7 @@ static void load_fonts(ALLEGRO_CONFIG const *cfg, const char *section)
 
       if (load_stmt) {
          if (!font) {
-            error("failed to load font: %s", key);
+            fatal_error("failed to load font: %s", key);
          }
          fonts[i].name = al_ustr_new(key);
          fonts[i].font = font;
@@ -457,7 +487,7 @@ static void load_fonts(ALLEGRO_CONFIG const *cfg, const char *section)
    }
 
    if (i == MAX_FONTS)
-      error("font limit reached");
+      fatal_error("font limit reached");
 
 #undef MAXBUF
 }
@@ -466,12 +496,15 @@ static ALLEGRO_FONT *get_font(char const *name)
 {
    int i;
 
+   if (streq(name, "NULL"))
+      return NULL;
+
    for (i = 0; i < MAX_FONTS; i++) {
       if (fonts[i].name && streq(al_cstr(fonts[i].name), name))
          return fonts[i].font;
    }
 
-   error("undefined font: %s", name);
+   fatal_error("undefined font: %s", name);
    return NULL;
 }
 
@@ -480,6 +513,13 @@ static int get_font_align(char const *value)
    return streq(value, "ALLEGRO_ALIGN_LEFT") ? ALLEGRO_ALIGN_LEFT
       : streq(value, "ALLEGRO_ALIGN_CENTRE") ? ALLEGRO_ALIGN_CENTRE
       : streq(value, "ALLEGRO_ALIGN_RIGHT") ? ALLEGRO_ALIGN_RIGHT
+      : streq(value, "ALLEGRO_ALIGN_INTEGER") ? ALLEGRO_ALIGN_INTEGER
+      : streq(value, "ALLEGRO_ALIGN_LEFT|ALLEGRO_ALIGN_INTEGER")
+         ? ALLEGRO_ALIGN_LEFT | ALLEGRO_ALIGN_INTEGER
+      : streq(value, "ALLEGRO_ALIGN_RIGHT|ALLEGRO_ALIGN_INTEGER")
+         ? ALLEGRO_ALIGN_RIGHT | ALLEGRO_ALIGN_INTEGER
+      : streq(value, "ALLEGRO_ALIGN_CENTRE|ALLEGRO_ALIGN_INTEGER")
+         ? ALLEGRO_ALIGN_CENTRE | ALLEGRO_ALIGN_INTEGER
       : atoi(value);
 }
 
@@ -488,6 +528,14 @@ static void set_config_int(ALLEGRO_CONFIG *cfg, char const *section,
 {
    char buf[40];
    sprintf(buf, "%d", value);
+   al_set_config_value(cfg, section, var, buf);
+}
+
+static void set_config_float(ALLEGRO_CONFIG *cfg, char const *section,
+   char const *var, float value)
+{
+   char buf[40];
+   sprintf(buf, "%f", value);
    al_set_config_value(cfg, section, var, buf);
 }
 
@@ -681,7 +729,7 @@ static int base64_decode(char c)
    if (c >= 'a' && c <= 'z') return 36 + (c - 'a');
    if (c == '+') return 62;
    if (c == '/') return 63;
-   error("invalid base64 character: %c", c);
+   fatal_error("invalid base64 character: %c", c);
    return -1;
 }
 
@@ -827,10 +875,25 @@ static void check_similarity(ALLEGRO_CONFIG const *cfg,
    
    if (bmp_type == HW) {
       char const *exp = al_get_config_value(cfg, testname, "hash_hw");
+      char const *sigexp = al_get_config_value(cfg, testname, "sig_hw");
       char hash[16];
+      char sig[SIG_LENZ];
       sprintf(hash, "%08x", hash_bitmap(bmp1));
       if (exp && streq(hash, exp)) {
          printf("OK   %s [%s]\n", testname, bt);
+         passed_tests++;
+         return;
+      }
+
+      if (sigexp && strlen(sigexp) != SIG_LEN) {
+         printf("WARNING: ignoring bad signature: %s\n", sigexp);
+         sigexp = NULL;
+      }
+
+      compute_signature(bmp1, sig);
+
+      if (sigexp && similar_signatures(sig, sigexp)) {
+         printf("OK   %s [%s] - by signature\n", testname, bt);
          passed_tests++;
          return;
       }
@@ -870,7 +933,7 @@ static void check_similarity(ALLEGRO_CONFIG const *cfg,
 }
 
 static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
-   ALLEGRO_BITMAP *target, int bmp_type, bool reliable)
+   ALLEGRO_BITMAP *target, int bmp_type, bool reliable, bool do_check_hash)
 {
 #define MAXBUF    80
 
@@ -950,6 +1013,12 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
 
       if (SCAN("al_clear_to_color", 1)) {
          al_clear_to_color(C(0));
+         continue;
+      }
+
+      if (SCANLVAL("al_clone_bitmap", 1)) {
+         ALLEGRO_BITMAP **bmp = reserve_local_bitmap(lval, bmp_type);
+         (*bmp) = al_clone_bitmap(B(0));
          continue;
       }
 
@@ -1067,8 +1136,15 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
       }
       if (SCAN("al_save_bitmap", 2)) {
          if (!al_save_bitmap(V(0), B(1))) {
-            error("failed to save %s", V(0));
+            fatal_error("failed to save %s", V(0));
          }
+         continue;
+      }
+      if (SCANLVAL("al_identify_bitmap", 1)) {
+         char const *ext = al_identify_bitmap(V(0));
+         if (!ext)
+            ext = "NULL";
+         al_set_config_value(cfg, testname, lval, ext);
          continue;
       }
 
@@ -1189,6 +1265,10 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
          set_config_int(cfg, testname, V(5), bbh);
          continue;
       }
+      if (SCAN("al_set_fallback_font", 2)) {
+         al_set_fallback_font(get_font(V(0)), get_font(V(1)));
+         continue;
+      }
 
       /* Primitives */
       if (SCAN("al_draw_line", 6)) {
@@ -1306,18 +1386,109 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
          al_vertical_shear_transform(get_transform(V(0)), F(1));
          continue;
       }
+      if (SCAN("al_orthographic_transform", 7)) {
+         al_orthographic_transform(get_transform(V(0)), F(1), F(2), F(3), F(4), F(5), F(6));
+         continue;
+      }
+      if (SCAN("al_use_projection_transform", 1)) {
+         al_use_projection_transform(get_transform(V(0)));
+         continue;
+      }
+      if (SCAN("al_set_blend_color", 1)) {
+         al_set_blend_color(C(0));
+         continue;
+      }
 
-      error("statement didn't scan: %s", stmt);
+      /* Simple arithmetic, generally useful. (5.1) */
+      if (SCANLVAL("isum", 2)) {
+         int result  = I(0) + I(1);
+         set_config_int(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("idif", 2)) {
+         int result  = I(0) - I(1);
+         set_config_int(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("imul", 2)) {
+         int result  = I(0) * I(1);
+         set_config_int(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("idiv", 2)) {
+         int result  = I(0) / I(1);
+         set_config_int(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("fsum", 2)) {
+         float result  = F(0) + F(1);
+         set_config_float(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("fdif", 2)) {
+         float result  = F(0) - F(1);
+         set_config_float(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("fmul", 2)) {
+         float result  = F(0) * F(1);
+         set_config_float(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("fdiv", 2)) {
+         float result  = F(0) / F(1);
+         set_config_float(cfg, testname, lval, result);
+         continue;
+      }
+
+      /* Dynamical variable initialisation, needed to properly initialize
+       * variables (5.1)*/
+      if (SCANLVAL("int", 1)) {
+         float result  = F(0);
+         set_config_float(cfg, testname, lval, result);
+         continue;
+      }
+      if (SCANLVAL("float", 1)) {
+         float result  = F(0);
+         set_config_float(cfg, testname, lval, result);
+         continue;
+      }
+       
+      /* Fonts: per glyph text handling (5.1)  */
+      if (SCAN("al_draw_glyph", 5)) {
+         al_draw_glyph(get_font(V(0)), C(1), F(2), F(3), I(4));
+         continue;
+      }
+      if (SCANLVAL("al_get_glyph_advance", 3)) {
+         int kerning = al_get_glyph_advance(get_font(V(0)), I(1), I(2));
+         set_config_int(cfg, testname, lval, kerning);
+         continue;
+      }
+      if (SCANLVAL("al_get_glyph_width", 2)) {
+         int w = al_get_glyph_width(get_font(V(0)), I(1));
+         set_config_int(cfg, testname, lval, w);
+         continue;
+      }
+      if (SCANLVAL("al_get_glyph_dimensions", 6)) {
+         int bbx, bby, bbw, bbh;
+         bool ok = al_get_glyph_dimensions(get_font(V(0)), I(1), &bbx, &bby, &bbw, &bbh);
+         set_config_int(cfg, testname, V(2), bbx);
+         set_config_int(cfg, testname, V(3), bby);
+         set_config_int(cfg, testname, V(4), bbw);
+         set_config_int(cfg, testname, V(5), bbh);
+         set_config_int(cfg, testname, lval, ok);
+         continue;
+      }
+
+      fatal_error("statement didn't scan: %s", stmt);
    }
 
    al_set_new_bitmap_format(ALLEGRO_PIXEL_FORMAT_ANY_WITH_ALPHA);
 
-   if (bmp_type == SW) {
-      al_set_new_bitmap_flags(ALLEGRO_MEMORY_BITMAP);
+   if (do_check_hash) {
       check_hash(cfg, testname, target, bmp_type);
    }
    else {
-      al_set_new_bitmap_flags(ALLEGRO_VIDEO_BITMAP);
       check_similarity(cfg, testname, target, membuf, bmp_type, reliable);
    }
 
@@ -1366,15 +1537,23 @@ static void sw_hw_test(ALLEGRO_CONFIG *cfg, char const *testname)
 {
    int old_failed_tests = failed_tests;
    bool reliable;
+   char const *hw_only_str = al_get_config_value(cfg, testname, "hw_only");
+   bool hw_only = hw_only_str && get_bool(hw_only_str);
 
    al_set_new_bitmap_flags(ALLEGRO_MEMORY_BITMAP);
-   do_test(cfg, testname, membuf, SW, true);
+   if (!hw_only) {
+      do_test(cfg, testname, membuf, SW, true, true);
+   }
 
    reliable = (failed_tests == old_failed_tests);
 
    if (display) {
       al_set_new_bitmap_flags(ALLEGRO_VIDEO_BITMAP);
-      do_test(cfg, testname, al_get_backbuffer(display), HW, reliable);
+      do_test(cfg, testname, al_get_backbuffer(display), HW, reliable, hw_only);
+   } else if (hw_only) {
+      printf("WARNING: Skipping hardware-only test due to the --no-display flag: %s\n",
+             testname);
+      skipped_tests++;
    }
 }
 
@@ -1396,7 +1575,7 @@ static void merge_config_sections(
    value = al_get_config_value(src_cfg, src_section, "extend");
    if (value) {
       if (streq(value, src_section)) {
-         error("section cannot extend itself: %s "
+         fatal_error("section cannot extend itself: %s "
             "(did you forget to rename a section?)", src_section);
       }
       merge_config_sections(targ_cfg, targ_section, src_cfg, value);
@@ -1404,7 +1583,7 @@ static void merge_config_sections(
 
    key = al_get_first_config_entry(src_cfg, src_section, &iter);
    if (!key) {
-      error("missing section: %s", src_section);
+      fatal_error("missing section: %s", src_section);
    }
    for (; key != NULL; key = al_get_next_config_entry(&iter)) {
       value = al_get_config_value(src_cfg, src_section, key);
@@ -1418,7 +1597,7 @@ static void run_test(ALLEGRO_CONFIG const *cfg, char const *section)
    ALLEGRO_CONFIG *cfg2;
 
    if (!section_exists(cfg, section)) {
-      error("section not found: %s", section);
+      fatal_error("section not found: %s", section);
    }
 
    cfg2 = al_create_config();
@@ -1489,10 +1668,10 @@ static void process_ini_files(void)
 
    while (argc > 0) {
       if (!has_suffix(argv[0], ".ini"))
-         error("expected .ini argument: %s\n", argv[0]);
+         fatal_error("expected .ini argument: %s\n", argv[0]);
       cfg = al_load_config_file(argv[0]);
       if (!cfg)
-         error("failed to load config file %s", argv[0]);
+         fatal_error("failed to load config file %s", argv[0]);
 
       if (verbose)
          printf("Running %s\n", argv[0]);
@@ -1554,13 +1733,13 @@ int main(int _argc, char *_argv[])
    argv = _argv;
 
    if (argc == 1) {
-      error("requires config file argument");
+      fatal_error("requires config file argument.\nSee --help for usage");
    }
    argc--;
    argv++;
 
    if (!al_init()) {
-      error("failed to initialise Allegro");
+      fatal_error("failed to initialise Allegro");
    }
    al_init_image_addon();
    al_init_font_addon();
@@ -1618,7 +1797,7 @@ int main(int _argc, char *_argv[])
       al_set_new_display_flags(display_flags);
       display = al_create_display(640, 480);
       if (!display) {
-         error("failed to create display");
+         fatal_error("failed to create display");
       }
    }
 
@@ -1639,6 +1818,7 @@ int main(int _argc, char *_argv[])
    printf("total tests:  %d\n", total_tests);
    printf("passed tests: %d\n", passed_tests);
    printf("failed tests: %d\n", failed_tests);
+   printf("skipped tests: %d\n", skipped_tests);
    printf("\n");
 
    return !!failed_tests;

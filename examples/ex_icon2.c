@@ -13,18 +13,22 @@
 
 #define NUM_ICONS 2
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *icons[NUM_ICONS];
    ALLEGRO_EVENT_QUEUE *queue;
    int u, v;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
    al_install_keyboard();
    al_init_image_addon();
+   init_platform_specific();
 
    display = al_create_display(320, 200);
    if (!display) {

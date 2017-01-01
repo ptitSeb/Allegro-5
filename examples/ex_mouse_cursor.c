@@ -85,7 +85,7 @@ static int hover(ALLEGRO_FONT *font, int y)
    return -1;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display1;
    ALLEGRO_DISPLAY *display2;
@@ -96,11 +96,15 @@ int main(void)
    ALLEGRO_FONT *font;
    ALLEGRO_EVENT event;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
 
    al_init_image_addon();
+   init_platform_specific();
 
    if (!al_install_mouse()) {
       abort_example("Error installing mouse\n");

@@ -3,12 +3,13 @@
 
 #include "allegro5/allegro.h"
 #include "allegro5/allegro_opengl.h"
-#include "allegro5/internal/aintern_iphone.h"
 #include "allegro5/internal/aintern_opengl.h"
 #include "allegro5/internal/aintern_vector.h"
 #include "allegro5/internal/aintern_odroid.h"
 #include "allegro5/internal/aintern_x.h"
 #include "allegro5/internal/aintern_xwindow.h"
+
+ALLEGRO_DEBUG_CHANNEL("display")
 
 #include "EGL/egl.h"
 
@@ -16,44 +17,20 @@
 #define DEFAULT_CURSOR_WIDTH 17
 #define DEFAULT_CURSOR_HEIGHT 28
 
-#pragma GCC optimize 0
-
 static ALLEGRO_DISPLAY_INTERFACE *vt;
 
 struct ALLEGRO_DISPLAY_ODROID_EXTRA {
 };
 
-void _al_odroid_setup_opengl_view(ALLEGRO_DISPLAY *d)
-{
-//printf("_al_odroid_setup_opengl_view(%x)\n", d);
-   glViewport(0, 0, d->w, d->h);
-
-   al_identity_transform(&d->proj_transform);
-   al_orthographic_transform(&d->proj_transform, 0, 0, -1, d->w, d->h, 1);
-
-   al_identity_transform(&d->view_transform);
-#ifdef ALLEGRO_CFG_NO_GLES2
-   if (!(d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
-      glMatrixMode(GL_PROJECTION);
-      glLoadMatrixf((float *)d->proj_transform.m);
-      glMatrixMode(GL_MODELVIEW);
-      glLoadMatrixf((float *)d->view_transform.m);
-   }
-#endif
-}
-
 /* Helper to set up GL state as we want it. */
 static void setup_gl(ALLEGRO_DISPLAY *d)
 {
-//printf("setup_gl(%x)\n", d);
     ALLEGRO_OGL_EXTRAS *ogl = d->ogl_extras;
 
     if (ogl->backbuffer)
         _al_ogl_resize_backbuffer(ogl->backbuffer, d->w, d->h);
     else
         ogl->backbuffer = _al_ogl_create_backbuffer(d);
-
-    _al_odroid_setup_opengl_view(d);
 }
 
 void _al_odroid_get_screen_info(int *dx, int *dy, int *screen_width, int *screen_height)
@@ -86,7 +63,7 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
     display->ogl_extras = ogl;
     display->vt = _al_get_odroid_display_interface();
     display->flags = al_get_new_display_flags();
-	#ifndef ALLEGRO_CFG_NO_GLES2
+	#ifdef ALLEGRO_CFG_OPENGLES2
 	display->flags |= ALLEGRO_PROGRAMMABLE_PIPELINE;
 	#endif
     if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
@@ -218,22 +195,28 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
       XGetWindowAttributes(system->x11display, d->window, &xwa);
       display->w = xwa.width;
       display->h = xwa.height;
+
       ALLEGRO_INFO("Using ALLEGRO_FULLSCREEN_WINDOW of %d x %d\n",
          display->w, display->h);
    }
    if (display->flags & ALLEGRO_FULLSCREEN) {
+// Not supported for now, so same code as fullscreen_window...
       _al_xwin_reset_size_hints(display);
       _al_xwin_set_fullscreen_window(display, 2);
       _al_xwin_set_size_hints(display, INT_MAX, INT_MAX);
-      d->wm_delete_window_atom = XInternAtom(system->x11display,
+/*      d->wm_delete_window_atom = XInternAtom(system->x11display,
          "WM_DELETE_WINDOW", False);
-      XSetWMProtocols(system->x11display, d->window, &d->wm_delete_window_atom, 1);
+      XSetWMProtocols(system->x11display, d->window, &d->wm_delete_window_atom, 1);*/
+      XWindowAttributes xwa;
+      XGetWindowAttributes(system->x11display, d->window, &xwa);
+      display->w = xwa.width;
+      display->h = xwa.height;
    }
 
    // EGL context creation
    static const EGLint contextAttribs[] =
    {
-#if !defined(ALLEGRO_CFG_NO_GLES2)
+#if defined(ALLEGRO_CFG_OPENGLES2)
           EGL_CONTEXT_CLIENT_VERSION,     2,
 #endif
           EGL_NONE
@@ -276,7 +259,7 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
    ConfigAttribs[attrib++] = EGL_SURFACE_TYPE;
    ConfigAttribs[attrib++] = EGL_WINDOW_BIT;
    ConfigAttribs[attrib++] = EGL_RENDERABLE_TYPE;
-#if defined(ALLEGRO_CFG_NO_GLES2)
+#if !defined(ALLEGRO_CFG_OPENGLES2)
    ConfigAttribs[attrib++] = EGL_OPENGL_ES_BIT;
 #else
    ConfigAttribs[attrib++] = EGL_OPENGL_ES2_BIT;
@@ -349,7 +332,7 @@ static ALLEGRO_DISPLAY *odroid_create_display(int w, int h)
 	output = (const char*)glGetString(GL_EXTENSIONS);
 	printf( "GL_EXT: %s\n", output);
 
-	#ifdef ALLEGRO_CFG_NO_GLES2
+	#ifndef ALLEGRO_CFG_OPENGLES2
 	// Create the glExtentions
 	printf("Attaching glExtension...\n");
 	glBlendEquation = (PFNGLBLENDEQUATIONOESPROC) eglGetProcAddress("glBlendEquationOES");
@@ -562,7 +545,7 @@ static void odroid_update_display_region(ALLEGRO_DISPLAY *d, int x, int y,
 
 static bool odroid_acknowledge_resize(ALLEGRO_DISPLAY *d)
 {
-   _al_odroid_setup_opengl_view(d);
+//   _al_odroid_setup_opengl_view(d);
    return true;
 }
 
@@ -598,13 +581,32 @@ static bool odroid_hide_mouse_cursor(ALLEGRO_DISPLAY *display)
     return true;
 }
 
+void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
+   bool delay_hack)
+{
+   ALLEGRO_SYSTEM_ODROID *system = (void *)al_get_system_driver();
+   (void)d;
+   (void)old_resize_count;
+
+   ALLEGRO_DEBUG("Awaiting resize event\n");
+
+   XSync(system->x11display, False);
+
+   /* XXX: This hack helps when toggling between fullscreen windows and not,
+    * on various window managers.
+    */
+   if (delay_hack) {
+      al_rest(0.2);
+   }
+}
+
 /* Obtain a reference to this driver. */
 ALLEGRO_DISPLAY_INTERFACE *_al_get_odroid_display_interface(void)
 {
     if (vt)
         return vt;
     
-    vt = (ALLEGRO_DISPLAY_INTERFACE*)al_calloc(1, sizeof *vt);
+    vt = al_calloc(1, sizeof *vt);
     
     vt->create_display = odroid_create_display;
     vt->destroy_display = odroid_destroy_display;
@@ -629,17 +631,12 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_odroid_display_interface(void)
     vt->set_display_flag = odroid_set_display_flag;
     vt->wait_for_vsync = odroid_wait_for_vsync;
 
-
-    //vt->acknowledge_drawing_halt = _al_raspberrypi_acknowledge_drawing_halt;
     vt->update_render_state = _al_ogl_update_render_state;
 
     _al_ogl_add_drawing_functions(vt);
-    // stub mouse function
-    // add default X mouse functions
-//    _al_xwin_add_cursor_functions(vt);
+
     vt->set_mouse_cursor = odroid_set_mouse_cursor;
     vt->set_system_mouse_cursor = odroid_set_system_mouse_cursor;
-	// overload show/hide functions
     vt->show_mouse_cursor = odroid_show_mouse_cursor;
     vt->hide_mouse_cursor = odroid_hide_mouse_cursor;
     

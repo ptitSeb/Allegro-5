@@ -1,5 +1,7 @@
 /* An example demonstrating different blending modes.
  */
+
+#define ALLEGRO_UNSTABLE
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_font.h>
 #include <allegro5/allegro_image.h>
@@ -285,10 +287,13 @@ static void init(void)
    ex.memory = al_create_bitmap(640, 480);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -297,8 +302,10 @@ int main(void)
    al_init_primitives_addon();
    al_install_keyboard();
    al_install_mouse();
+   al_install_touch_input();
    al_init_image_addon();
    al_init_font_addon();
+   init_platform_specific();
 
    display = al_create_display(640, 480);
    if (!display) {
@@ -314,6 +321,10 @@ int main(void)
    al_register_event_source(ex.queue, al_get_mouse_event_source());
    al_register_event_source(ex.queue, al_get_display_event_source(display));
    al_register_event_source(ex.queue, al_get_timer_event_source(timer));
+   if (al_is_touch_input_installed()) {
+      al_register_event_source(ex.queue,
+         al_get_touch_input_mouse_emulation_event_source());
+   }
 
    al_start_timer(timer);
    run();

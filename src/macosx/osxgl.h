@@ -11,19 +11,31 @@
 /* Number of pixel format attributes we can set */
 #define AL_OSX_NUM_PFA  64
 
+@interface ALWindow : NSWindow {
+   ALLEGRO_DISPLAY* display;
+}
+
+@property ALLEGRO_DISPLAY *display;
+
+/* A helper method to call setStyleMask from a separate thread. */
+- (void)setStyleMaskSelector:(NSNumber *)mask;
+@end
+
 /* This is our version of ALLEGRO_DISPLAY with driver specific extra data. */
 typedef struct ALLEGRO_DISPLAY_OSX_WIN {
-	ALLEGRO_DISPLAY parent;
-	int depth;
-	NSOpenGLContext* ctx;
+   ALLEGRO_DISPLAY parent;
+   int depth;
+   NSOpenGLContext* ctx;
    NSOpenGLPixelFormatAttribute attributes[AL_OSX_NUM_PFA];
-	NSWindow* win;
+   ALWindow* win;
    NSCursor* cursor;
    CGDirectDisplayID display_id;
    BOOL show_cursor;
    NSTrackingArea *tracking;
    unsigned int display_group;
    BOOL in_fullscreen;
+   BOOL single_buffer;
+   CGDisplayModeRef original_mode;
 } ALLEGRO_DISPLAY_OSX_WIN;
 
 /* This is our version of ALLEGRO_MOUSE_CURSOR */

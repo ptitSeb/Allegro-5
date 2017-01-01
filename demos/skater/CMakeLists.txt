@@ -1,8 +1,17 @@
-if(SUPPORT_FONT AND SUPPORT_TTF AND SUPPORT_AUDIO AND SUPPORT_ACODEC AND SUPPORT_NATIVE_DIALOG)
+if(SUPPORT_FONT AND SUPPORT_AUDIO AND SUPPORT_ACODEC)
 else()
     message(STATUS "Not building skater demo")
     return()
 endif()
+
+include_directories(
+   ${PROJECT_SOURCE_DIR}/addons/acodec
+   ${PROJECT_SOURCE_DIR}/addons/audio
+   ${PROJECT_SOURCE_DIR}/addons/font
+   ${PROJECT_SOURCE_DIR}/addons/image
+   ${PROJECT_SOURCE_DIR}/addons/main
+   ${PROJECT_SOURCE_DIR}/addons/primitives
+   )
 
 set(DEMO_SRCS
    src/anim.c
@@ -37,27 +46,41 @@ set(DEMO_SRCS
    src/token.c
    src/transition.c
    src/vcontroller.c
-    )
+   )
 
 file(GLOB SKATER_GRAPHICS data/graphics/*.png)
 file(GLOB SKATER_AUDIO data/audio/*)
 file(GLOB SKATER_MENU data/menu/*)
 file(GLOB SKATER_LEVEL data/*.txt)
-file(GLOB SKATER_FONTS ../../examples/data/*.ttf)
 
-include_directories(
-   ${CMAKE_SOURCE_DIR}/addons/acodec
-   ${CMAKE_SOURCE_DIR}/addons/audio
-   ${CMAKE_SOURCE_DIR}/addons/color
-   ${CMAKE_SOURCE_DIR}/addons/font
-   ${CMAKE_SOURCE_DIR}/addons/image
-   ${CMAKE_SOURCE_DIR}/addons/main
-   ${CMAKE_SOURCE_DIR}/addons/memfile
-   ${CMAKE_SOURCE_DIR}/addons/native_dialog
-   ${CMAKE_SOURCE_DIR}/addons/physfs
-   ${CMAKE_SOURCE_DIR}/addons/primitives
-   ${CMAKE_SOURCE_DIR}/addons/ttf
-   )
+set(SKATER_DATA
+    ${SKATER_GRAPHICS}
+    ${SKATER_AUDIO}
+    ${SKATER_MENU}
+    ${SKATER_LEVEL}
+    ${SKATER_FONTS}
+    )
+
+set(SKATER_REL_DATA)
+foreach(data ${SKATER_DATA})
+    file(RELATIVE_PATH relpath "${CMAKE_CURRENT_SOURCE_DIR}" "${data}")
+    list(APPEND SKATER_REL_DATA "${relpath}")
+endforeach(data)
+
+if(ANDROID)
+    add_copy_commands(
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/skater.project/assets"
+        ASSETS
+        "${SKATER_REL_DATA}"
+        )
+    add_android_app(skater
+        "${DEMO_SRCS};${ASSETS}"
+        "${ALLEGRO_LINK_WITH};${AUDIO_LINK_WITH};${ACODEC_LINK_WITH};${FONT_LINK_WITH};${IMAGE_LINK_WITH};${PRIMITIVES_LINK_WITH}"
+        ""
+        )
+    return()
+endif()
 
 if(APPLE)
     set(DEMO_EXECUTABLE_TYPE MACOSX_BUNDLE)
@@ -68,11 +91,7 @@ endif(APPLE)
 add_executable(skater
     ${DEMO_EXECUTABLE_TYPE}
     ${DEMO_SRCS}
-    ${SKATER_GRAPHICS}
-    ${SKATER_AUDIO}
-    ${SKATER_MENU}
-    ${SKATER_LEVEL}
-    ${SKATER_FONTS}
+    ${SKATER_DATA}
     )
 
 fix_executable(skater)
@@ -85,15 +104,10 @@ else(WANT_MONOLITH)
    target_link_libraries(skater
      ${ACODEC_LINK_WITH}
      ${AUDIO_LINK_WITH}
-     ${COLOR_LINK_WITH}
      ${FONT_LINK_WITH}
      ${IMAGE_LINK_WITH}
      ${ALLEGRO_MAIN_LINK_WITH}
-     ${MEMFILE_LINK_WITH}
-     ${NATIVE_DIALOG_LINK_WITH}
-     ${PHYSFS_LINK_WITH}
      ${PRIMITIVES_LINK_WITH}
-     ${TTF_LINK_WITH}
      )
 endif(WANT_MONOLITH)
 
@@ -123,12 +137,13 @@ set_source_files_properties(${SKATER_MENU} PROPERTIES
 set_source_files_properties(${SKATER_LEVEL} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources/data"
     )
-set_source_files_properties(${SKATER_FONTS} PROPERTIES
-    MACOSX_PACKAGE_LOCATION "Resources/data/examples/data"
+
+copy_data_dir_to_build(copy_skater_data
+    "${CMAKE_CURRENT_SOURCE_DIR}/data"
+    "${CMAKE_CURRENT_BINARY_DIR}/data"
     )
 
-copy_data_dir_to_build(copy_skater_data data .)
-copy_data_dir_to_build(copy_skater_example_data ../../examples/data data/examples/data)
+add_dependencies(skater copy_skater_data copy_example_data)
 
 #-----------------------------------------------------------------------------#
 # vi: set ts=8 sts=4 sw=4 et:

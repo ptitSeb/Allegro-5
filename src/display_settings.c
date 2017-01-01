@@ -48,6 +48,16 @@ void al_set_new_display_option(int option, int value, int importance)
 }
 
 
+int _al_get_suggested_display_option(ALLEGRO_DISPLAY *d,
+   int option, int default_value)
+{
+   ALLEGRO_EXTRA_DISPLAY_SETTINGS *s = &d->extra_settings;
+   uint64_t flags = s->required | s->suggested;
+   if (flags & (1 << option))
+      return s->settings[option];
+   return default_value;
+}
+
 
 /* Function: al_get_new_display_option
  */
@@ -528,22 +538,16 @@ int _al_display_settings_sorter(const void *p0, const void *p1)
    const ALLEGRO_EXTRA_DISPLAY_SETTINGS *f0 = *((ALLEGRO_EXTRA_DISPLAY_SETTINGS **)p0);
    const ALLEGRO_EXTRA_DISPLAY_SETTINGS *f1 = *((ALLEGRO_EXTRA_DISPLAY_SETTINGS **)p1);
 
+   if (!f0 && !f1)
+      return 0;
    if (!f0)
       return 1;
    if (!f1)
       return -1;
-   if (f0->score == f1->score) {
-      if (f0->index < f1->index)
-         return -1;
-      else
-         return 1;
-   }
-   else if (f0->score > f1->score) {
-      return -1;
-   }
-   else {
-      return 1;
-   }
+   if (f0->score == f1->score)
+      return f0->index - f1->index; /* lower better */
+   else
+      return f1->score - f0->score; /* higher better */
 }
 
 

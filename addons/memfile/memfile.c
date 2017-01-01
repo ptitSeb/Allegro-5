@@ -13,9 +13,10 @@ struct ALLEGRO_FILE_MEMFILE {
    char *mem;
 };
 
-static void memfile_fclose(ALLEGRO_FILE *fp)
+static bool memfile_fclose(ALLEGRO_FILE *fp)
 {
    al_free(al_get_file_userdata(fp));
+   return true;
 }
 
 static size_t memfile_fread(ALLEGRO_FILE *fp, void *ptr, size_t size)
@@ -122,10 +123,16 @@ static bool memfile_feof(ALLEGRO_FILE *fp)
    return mf->eof;
 }
 
-static bool memfile_ferror(ALLEGRO_FILE *fp)
+static int memfile_ferror(ALLEGRO_FILE *fp)
 {
    (void)fp;
-   return false;
+   return 0;
+}
+
+static const char *memfile_ferrmsg(ALLEGRO_FILE *fp)
+{
+   (void)fp;
+   return "";
 }
 
 static void memfile_fclearerr(ALLEGRO_FILE *fp)
@@ -151,6 +158,7 @@ static struct ALLEGRO_FILE_INTERFACE memfile_vtable = {
    memfile_fseek,
    memfile_feof,
    memfile_ferror,
+   memfile_ferrmsg,
    memfile_fclearerr,
    NULL,   /* ungetc */
    memfile_fsize

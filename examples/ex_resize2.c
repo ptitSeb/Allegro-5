@@ -7,23 +7,29 @@
 
 #include "allegro5/allegro.h"
 #include "allegro5/allegro_image.h"
+#include "allegro5/allegro_font.h"
 #include <stdio.h>
 
 #include "common.c"
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *bmp;
    ALLEGRO_EVENT_QUEUE *queue;
    ALLEGRO_EVENT event;
+   ALLEGRO_FONT *font;
    bool redraw;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
    al_install_keyboard();
    al_init_image_addon();
+   al_init_font_addon();
 
    al_set_new_display_flags(ALLEGRO_RESIZABLE |
       ALLEGRO_GENERATE_EXPOSE_EVENTS);
@@ -38,6 +44,8 @@ int main(void)
       abort_example("Unable to load image\n");
    }
 
+   font = al_create_builtin_font();
+
    queue = al_create_event_queue();
    al_register_event_source(queue, al_get_display_event_source(display));
    al_register_event_source(queue, al_get_keyboard_event_source());
@@ -50,6 +58,17 @@ int main(void)
             0, 0, al_get_bitmap_width(bmp), al_get_bitmap_height(bmp),
             0, 0, al_get_display_width(display), al_get_display_height(display),
             0);
+      al_draw_multiline_textf(font, al_map_rgb(255, 255, 0), 0, 0, 640,
+         al_get_font_line_height(font), 0,
+         "size: %d x %d\n"
+         "maximized: %s\n"
+         "+ key to maximize\n"
+         "- key to un-maximize",
+         al_get_display_width(display),
+         al_get_display_height(display),
+         al_get_display_flags(display) & ALLEGRO_MAXIMIZED ? "yes" :
+         "no");
+
          al_flip_display();
          redraw = false;
       }
@@ -65,6 +84,14 @@ int main(void)
       if (event.type == ALLEGRO_EVENT_KEY_DOWN &&
             event.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
          break;
+      }
+      if (event.type == ALLEGRO_EVENT_KEY_CHAR &&
+            event.keyboard.unichar == '+') {
+         al_set_display_flag(display, ALLEGRO_MAXIMIZED, true);
+      }
+      if (event.type == ALLEGRO_EVENT_KEY_CHAR &&
+            event.keyboard.unichar == '-') {
+         al_set_display_flag(display, ALLEGRO_MAXIMIZED, false);
       }
       if (event.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
          break;

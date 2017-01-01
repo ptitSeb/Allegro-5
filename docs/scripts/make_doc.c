@@ -3,20 +3,25 @@
  *
  * Options are:
  *
+ *    --pandoc PANDOC
  *    --protos PROTOS-FILE
  *    --to FORMAT (html, man, latex, texinfo, etc.)
  *    --raise-sections
  *
  * Unknown options are passed through to Pandoc.
- *
- * Environment variables: PANDOC
  */
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(_BSD_SOURCE) || defined(_SVID_SOURCE) || (_XOPEN_SOURCE >= 500)
    #include <unistd.h>
+   #define USE_MKSTEMP 1
+#elif defined(_MSC_VER)
+   #define TEMPNAM(d, p)   (_tempnam((d), (p)))
+#else
+   #define TEMPNAM(d, p)   (tempnam((d), (p)))
 #endif
 
 #include "aatree.h"
@@ -29,10 +34,11 @@ dstr pandoc_options  = "";
 dstr protos_file     = "protos";
 dstr to_format       = "html";
 bool raise_sections  = false;
-char tmp_preprocess_output[80];
-char tmp_pandoc_output[80];
+dstr tmp_preprocess_output;
+dstr tmp_pandoc_output;
 
 static Aatree *protos = &aa_nil;
+static Aatree *sources = &aa_nil;
 
 
 static int process_options(int argc, char *argv[]);
@@ -62,13 +68,7 @@ int main(int argc, char *argv[])
 
 static int process_options(int argc, char *argv[])
 {
-   char *p;
    int i;
-
-   p = getenv("PANDOC");
-   if (p) {
-      d_assign(pandoc, p);
-   }
 
    for (i = 1; i < argc; ) {
       if (streq(argv[i], "--")) {
@@ -78,7 +78,11 @@ static int process_options(int argc, char *argv[])
       if (argv[i][0] != '-') {
          break;
       }
-      if (streq(argv[i], "--protos")) {
+      if (streq(argv[i], "--pandoc")) {
+         d_assign(pandoc, argv[i + 1]);
+         i += 2;
+      }
+      else if (streq(argv[i], "--protos")) {
          d_assign(protos_file, argv[i + 1]);
          i += 2;
       }
@@ -114,19 +118,32 @@ static void load_prototypes(const char *filename)
    dstr line;
    const char *name;
    const char *newtext;
+   const char *file_name;
+   const char *line_number;
    dstr text;
 
    d_open_input(filename);
 
    while (d_getline(line)) {
-      if (d_match(line, "([^:]*): (.*)")) {
+      if (d_match(line, "([^:]*): ([^:]*):([^:]*):([^:]*)")) {
          name = d_submatch(1);
          newtext = d_submatch(2);
+         file_name = d_submatch(3);
+         line_number = d_submatch(4);
 
          d_assign(text, lookup_prototype(name));
-         strcat(text, "\n    ");
+         strcat(text, "\n");
          strcat(text, newtext);
          protos = aa_insert(protos, name, text);
+
+         d_assign(text, lookup_source(name));
+         if (strlen(text) == 0) {
+            strcat(text, "https://github.com/liballeg/allegro5/blob/master/");
+            strcat(text, file_name);
+            strcat(text, "#L");
+            strcat(text, line_number);
+            sources = aa_insert(sources, name, text);
+         }
       }
    }
 
@@ -141,23 +158,33 @@ const char *lookup_prototype(const char *name)
 }
 
 
+const char *lookup_source(const char *name)
+{
+   const char *r = aa_search(sources, name);
+   return (r) ? r : "";
+}
+
+
 void generate_temp_file(char *filename)
 {
    /* gcc won't shut up if we use tmpnam() so we'll use mkstemp() if it is
     * likely to be available.
     */
-#if defined(_BSD_SOURCE) || defined(_SVID_SOURCE) || (_XOPEN_SOURCE >= 500)
+#ifdef USE_MKSTEMP
    int fd;
-   strcpy(filename, ",make_doc_tmp.XXXXXX");
+   d_assign(filename, "make_doc_tmp.XXXXXX");
    fd = mkstemp(filename);
    if (fd == -1) {
       d_abort("could not generate temporary file name", "");
    }
    close(fd);
 #else
-   if (!tmpnam(filename)) {
+   char *name = TEMPNAM(NULL, "make_doc_tmp.");
+   if (!name) {
       d_abort("could not generate temporary file name", "");
    }
+   d_assign(filename, name);
+   free(name);
 #endif
 }
 
@@ -190,7 +217,7 @@ void call_pandoc(const char *input, const char *output,
       }
    }
 
-   sprintf(cmd, "%s %s %s %s --to %s --output %s",
+   sprintf(cmd, "\"%s\" %s %s %s --to %s --output %s",
       pandoc, input_native, pandoc_options, extra_options, to_format, output);
    if (system(cmd) != 0) {
       d_abort("system call failed: ", cmd);

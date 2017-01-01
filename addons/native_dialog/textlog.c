@@ -8,10 +8,10 @@
 #include "allegro5/internal/aintern_system.h"
 
 
-/* The GTK implementation does not require an extra thread.
- * The Windows and OSX implementations do.
+/* The GTK and OSX implementations do not require an extra thread.
+ * The Windows implementation does.
  */
-#if defined(ALLEGRO_CFG_NATIVE_DIALOG_WINDOWS) || defined(ALLEGRO_CFG_NATIVE_DIALOG_OSX)
+#if defined(ALLEGRO_CFG_NATIVE_DIALOG_WINDOWS) 
    #define TEXT_LOG_EXTRA_THREAD true
 #else
    #define TEXT_LOG_EXTRA_THREAD false
@@ -80,7 +80,7 @@ ALLEGRO_TEXTLOG *al_open_native_text_log(char const *title, int flags)
       return NULL;
    }
 
-   _al_register_destructor(_al_dtor_list, textlog,
+   textlog->dtor_item = _al_register_destructor(_al_dtor_list, "textlog", textlog,
       (void (*)(void *))al_close_native_text_log);
 
    return (ALLEGRO_TEXTLOG *)textlog;
@@ -111,7 +111,7 @@ void al_close_native_text_log(ALLEGRO_TEXTLOG *textlog)
          al_lock_mutex(dialog->tl_text_mutex);
       }
 
-      _al_unregister_destructor(_al_dtor_list, dialog);
+      _al_unregister_destructor(_al_dtor_list, dialog->dtor_item);
    }
 
    al_ustr_free(dialog->title);

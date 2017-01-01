@@ -31,6 +31,7 @@ ALLEGRO_DEBUG_CHANNEL("video")
 /* XXX probably should be based on stream parameters */
 static const int NUM_FRAGS    = 2;
 static const int FRAG_SAMPLES = 4096;
+static const int RGB_PIXEL_FORMAT = ALLEGRO_PIXEL_FORMAT_ABGR_8888;
 
 
 typedef struct OGG_VIDEO OGG_VIDEO;
@@ -95,6 +96,7 @@ struct OGG_VIDEO {
    th_pixel_fmt pixel_fmt;
    th_ycbcr_buffer buffer;
    bool buffer_dirty;
+   unsigned char* rgb_data;
    ALLEGRO_BITMAP *frame_bmp;
    ALLEGRO_BITMAP *pic_bmp;         /* frame_bmp, or subbitmap thereof */
 
@@ -718,6 +720,7 @@ static void setup_theora_stream_decode(ALLEGRO_VIDEO *video, OGG_VIDEO *ogv,
    int pic_y = tstream->info.pic_y;
    int pic_w = tstream->info.pic_width;
    int pic_h = tstream->info.pic_height;
+   float aspect_ratio = 1.0;
 
    tstream->ctx = th_decode_alloc(&tstream->info, tstream->setup);
    ASSERT(tstream->ctx);
@@ -733,9 +736,8 @@ static void setup_theora_stream_decode(ALLEGRO_VIDEO *video, OGG_VIDEO *ogv,
       ogv->pic_bmp = al_create_sub_bitmap(ogv->frame_bmp,
          pic_x, pic_y, pic_w, pic_h);
    }
-
-   video->width = pic_w;
-   video->height = pic_h;
+   ogv->rgb_data =
+      al_malloc(al_get_pixel_size(RGB_PIXEL_FORMAT) * frame_w * frame_h);
 
    video->fps =
       (double)tstream->info.fps_numerator /
@@ -745,21 +747,21 @@ static void setup_theora_stream_decode(ALLEGRO_VIDEO *video, OGG_VIDEO *ogv,
       (double)tstream->info.fps_numerator;
 
    if (tstream->info.aspect_denominator != 0) {
-      video->aspect_ratio =
-         (double)(video->width * tstream->info.aspect_numerator) /
-         (double)(video->height * tstream->info.aspect_denominator);
+      aspect_ratio =
+         (double)(pic_w * tstream->info.aspect_numerator) /
+         (double)(pic_h * tstream->info.aspect_denominator);
    }
-   else {
-      video->aspect_ratio = 0.0f;
-   }
+
+   _al_compute_scaled_dimensions(pic_w, pic_h, aspect_ratio, &video->scaled_width,
+      &video->scaled_height);
 
    tstream->prev_framenum = -1;
 
    ALLEGRO_INFO("Frame size: %dx%d\n", frame_w, frame_h);
    ALLEGRO_INFO("Picture size: %dx%d\n", pic_w, pic_h);
+   ALLEGRO_INFO("Scaled size: %fx%f\n", video->scaled_width, video->scaled_height);
    ALLEGRO_INFO("FPS: %f\n", video->fps);
    ALLEGRO_INFO("Frame_duration: %f\n", tstream->frame_duration);
-   ALLEGRO_INFO("Aspect ratio: %f\n", video->aspect_ratio);
 }
 
 static int64_t get_theora_framenum(THEORA_STREAM *tstream, ogg_packet *packet)
@@ -796,7 +798,13 @@ static bool handle_theora_data(ALLEGRO_VIDEO *video, THEORA_STREAM *tstream,
    }
 
    rc = th_decode_packetin(tstream->ctx, packet, NULL);
-   ASSERT(rc == 0 || rc == TH_DUPFRAME);
+   if (rc != TH_EBADPACKET) {
+      /* HACK: When we seek to beginning, the first few packets are actually
+       * headers. To properly fix this, those packets should be ignored when we
+       * do the seeking (see the XXX there). */
+      ASSERT(rc == 0 || rc == TH_DUPFRAME);
+   }
+
    if (rc == 0) {
       *ret_new_frame = true;
 
@@ -805,6 +813,66 @@ static bool handle_theora_data(ALLEGRO_VIDEO *video, THEORA_STREAM *tstream,
    }
 
    return true;
+}
+
+/* Y'CrCb to RGB conversion. */
+/* XXX simple slow implementation */
+
+static unsigned char clamp(int x)
+{
+   if (x < 0)
+      return 0;
+   if (x > 255)
+      return 255;
+   return x;
+}
+
+static INLINE void ycbcr_to_rgb(th_ycbcr_buffer buffer,
+   unsigned char* rgb_data, int pixel_size, int pitch, int xshift, int yshift)
+{
+   const int w = buffer[0].width;
+   const int h = buffer[0].height;
+   int x, y;
+
+   for (y = 0; y < h; y++) {
+      const int y2 = y >> yshift;
+      for (x = 0; x < w; x++) {
+         const int x2 = x >> xshift;
+         unsigned char * const data = rgb_data + y * pitch + x * pixel_size;
+         const int yp = buffer[0].data[y  * buffer[0].stride + x ];
+         const int cb = buffer[1].data[y2 * buffer[1].stride + x2];
+         const int cr = buffer[2].data[y2 * buffer[2].stride + x2];
+         const int C = yp - 16;
+         const int D = cb - 128;
+         const int E = cr - 128;
+
+         data[0] = clamp((298*C         + 409*E + 128) >> 8);
+         data[1] = clamp((298*C - 100*D - 208*E + 128) >> 8);
+         data[2] = clamp((298*C + 516*D         + 128) >> 8);
+         data[3] = 0xff;
+      }
+   }
+}
+
+static void convert_buffer_to_rgba(OGG_VIDEO *ogv)
+{
+   const int pixel_size = al_get_pixel_size(RGB_PIXEL_FORMAT);
+   const int pitch = pixel_size * al_get_bitmap_width(ogv->frame_bmp);
+
+   switch (ogv->pixel_fmt) {
+      case TH_PF_420:
+         ycbcr_to_rgb(ogv->buffer, ogv->rgb_data, pixel_size, pitch, 1, 1);
+         break;
+      case TH_PF_422:
+         ycbcr_to_rgb(ogv->buffer, ogv->rgb_data, pixel_size, pitch, 1, 0);
+         break;
+      case TH_PF_444:
+         ycbcr_to_rgb(ogv->buffer, ogv->rgb_data, pixel_size, pitch, 0, 0);
+         break;
+      default:
+         ALLEGRO_ERROR("Unsupported pixel format.\n");
+         break;
+   }
 }
 
 static int poll_theora_decode(ALLEGRO_VIDEO *video, STREAM *tstream_outer)
@@ -852,12 +920,19 @@ static int poll_theora_decode(ALLEGRO_VIDEO *video, STREAM *tstream_outer)
    }
 
    if (new_frame) {
+      ALLEGRO_EVENT event;
       al_lock_mutex(ogv->mutex);
 
       rc = th_decode_ycbcr_out(tstream->ctx, ogv->buffer);
       ASSERT(rc == 0);
 
+      convert_buffer_to_rgba(ogv);
+
       ogv->buffer_dirty = true;
+
+      event.type = ALLEGRO_EVENT_VIDEO_FRAME_SHOW;
+      event.user.data1 = (intptr_t)video;
+      al_emit_user_event(&video->es, &event, NULL);
 
       al_unlock_mutex(ogv->mutex);
    }
@@ -907,7 +982,6 @@ static void seek_to_beginning(ALLEGRO_VIDEO *video, OGG_VIDEO *ogv,
 
    /* XXX maybe clear backlog of time and stream fragment events */
 }
-
 
 /* Decode thread. */
 
@@ -988,17 +1062,26 @@ static void *decode_thread_func(ALLEGRO_THREAD *thread, void *_video)
       }
 
       if (ev.type == ALLEGRO_EVENT_TIMER) {
-         if (vstream_outer && !video->paused) {
+         if (vstream_outer && video->playing) {
             poll_vorbis_decode(ogv, vstream_outer);
          }
 
          /* If no audio then video is master. */
-         if (!video->audio && !video->paused && !ogv->reached_eof) {
+         if (!video->audio && video->playing && !ogv->reached_eof) {
             video->position += tstream->frame_duration;
          }
 
          if (tstream_outer) {
             poll_theora_decode(video, tstream_outer);
+         }
+
+         if (video->playing && ogv->reached_eof) {
+            ALLEGRO_EVENT event;
+            video->playing = false;
+
+            event.type = ALLEGRO_EVENT_VIDEO_FINISHED;
+            event.user.data1 = (intptr_t)video;
+            al_emit_user_event(&video->es, &event, NULL);
          }
       }
 
@@ -1009,11 +1092,11 @@ static void *decode_thread_func(ALLEGRO_THREAD *thread, void *_video)
           * fragment events which pushes the position field ahead of the
           * real audio position.
           */
-         if (!video->paused && !ogv->reached_eof) {
+         if (video->playing && !ogv->reached_eof) {
             video->audio_position += audio_pos_step;
             video->position = video->audio_position - NUM_FRAGS * audio_pos_step;
          }
-         update_audio_fragment(video->audio, vstream, video->paused,
+         update_audio_fragment(video->audio, vstream, !video->playing,
             ogv->reached_eof);
       }
    }
@@ -1033,70 +1116,21 @@ static void *decode_thread_func(ALLEGRO_THREAD *thread, void *_video)
 }
 
 
-/* Y'CrCb to RGB conversion. */
-/* XXX simple slow implementation */
-
-static unsigned char clamp(int x)
-{
-   if (x < 0)
-      return 0;
-   if (x > 255)
-      return 255;
-   return x;
-}
-
-static INLINE void ycbcr_to_rgb(th_ycbcr_buffer buffer,
-   ALLEGRO_LOCKED_REGION *lr, int xshift, int yshift)
-{
-   const int w = buffer[0].width;
-   const int h = buffer[0].height;
-   int x, y;
-
-   for (y = 0; y < h; y++) {
-      const int y2 = y >> yshift;
-      for (x = 0; x < w; x++) {
-         const int x2 = x >> xshift;
-         unsigned char * const data = (unsigned char *)lr->data
-            + y*lr->pitch + x*lr->pixel_size;
-         const int yp = buffer[0].data[y  * buffer[0].stride + x ];
-         const int cb = buffer[1].data[y2 * buffer[1].stride + x2];
-         const int cr = buffer[2].data[y2 * buffer[2].stride + x2];
-         const int C = yp - 16;
-         const int D = cb - 128;
-         const int E = cr - 128;
-
-         data[0] = clamp((298*C         + 409*E + 128) >> 8);
-         data[1] = clamp((298*C - 100*D - 208*E + 128) >> 8);
-         data[2] = clamp((298*C + 516*D         + 128) >> 8);
-         data[3] = 0xff;
-      }
-   }
-}
-
 static bool update_frame_bmp(OGG_VIDEO *ogv)
 {
    ALLEGRO_LOCKED_REGION *lr;
+   int y;
+   int pitch = al_get_pixel_size(RGB_PIXEL_FORMAT) * al_get_bitmap_width(ogv->frame_bmp);
 
-   lr = al_lock_bitmap(ogv->frame_bmp, ALLEGRO_PIXEL_FORMAT_ABGR_8888,
+   lr = al_lock_bitmap(ogv->frame_bmp, RGB_PIXEL_FORMAT,
       ALLEGRO_LOCK_WRITEONLY);
    if (!lr) {
       ALLEGRO_ERROR("Failed to lock bitmap.\n");
       return false;
    }
 
-   switch (ogv->pixel_fmt) {
-      case TH_PF_420:
-         ycbcr_to_rgb(ogv->buffer, lr, 1, 1);
-         break;
-      case TH_PF_422:
-         ycbcr_to_rgb(ogv->buffer, lr, 1, 0);
-         break;
-      case TH_PF_444:
-         ycbcr_to_rgb(ogv->buffer, lr, 0, 0);
-         break;
-      default:
-         ALLEGRO_ERROR("Unsupported pixel format.\n");
-         break;
+   for (y = 0; y < al_get_bitmap_height(ogv->frame_bmp); y++) {
+      memcpy((unsigned char*)lr->data + y * lr->pitch, ogv->rgb_data + y * pitch, pitch);
    }
 
    al_unlock_bitmap(ogv->frame_bmp);
@@ -1202,6 +1236,8 @@ static bool ogv_close_video(ALLEGRO_VIDEO *video)
       }
       al_destroy_bitmap(ogv->frame_bmp);
 
+      al_free(ogv->rgb_data);
+
       al_free(ogv);
    }
 
@@ -1236,9 +1272,12 @@ static bool ogv_start_video(ALLEGRO_VIDEO *video)
    return true;
 }
 
-static bool ogv_pause_video(ALLEGRO_VIDEO *video)
+static bool ogv_set_video_playing(ALLEGRO_VIDEO *video)
 {
-   (void)video;
+   OGG_VIDEO * const ogv = video->data;
+   if (ogv->reached_eof) {
+      video->playing = false;
+   }
    return true;
 }
 
@@ -1312,11 +1351,14 @@ static ALLEGRO_VIDEO_INTERFACE ogv_vtable = {
    ogv_open_video,
    ogv_close_video,
    ogv_start_video,
-   ogv_pause_video,
+   ogv_set_video_playing,
    ogv_seek_video,
    ogv_update_video
 };
 
-ALLEGRO_VIDEO_INTERFACE *_al_video_vtable = &ogv_vtable;
+ALLEGRO_VIDEO_INTERFACE *_al_video_ogv_vtable(void)
+{
+   return &ogv_vtable;
+}
 
 /* vim: set sts=3 sw=3 et: */

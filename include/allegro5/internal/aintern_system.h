@@ -45,14 +45,16 @@ struct ALLEGRO_SYSTEM_INTERFACE
    void *(*open_library)(const char *filename);
    void *(*import_symbol)(void *library, const char *symbol);
    void (*close_library)(void *handle);
+   void (*heartbeat)(void);
+   void (*heartbeat_init)(void);
 };
 
 struct ALLEGRO_SYSTEM
 {
    ALLEGRO_SYSTEM_INTERFACE *vt;
    _AL_VECTOR displays; /* Keep a list of all displays attached to us. */
-   ALLEGRO_CONFIG *config;
    ALLEGRO_PATH *user_exe_path;
+   int mouse_wheel_precision;
    bool installed;
 };
 

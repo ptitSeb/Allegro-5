@@ -1,3 +1,5 @@
+#define ALLEGRO_UNSTABLE
+
 #include <stdio.h>
 #include <math.h>
 #include <allegro5/allegro.h>
@@ -115,13 +117,16 @@ static void draw_opengl(void)
    glEnd();
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_EVENT_QUEUE *queue;
    ALLEGRO_EVENT event;
    int frames = 0;
    double start;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");

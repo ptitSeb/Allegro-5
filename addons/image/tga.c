@@ -562,18 +562,35 @@ ALLEGRO_BITMAP *_al_load_tga(const char *filename, int flags)
 bool _al_save_tga(const char *filename, ALLEGRO_BITMAP *bmp)
 {
    ALLEGRO_FILE *f;
-   bool ret;
+   bool retsave;
+   bool retclose;
    ASSERT(filename);
 
    f = al_fopen(filename, "wb");
    if (!f)
       return false;
 
-   ret = _al_save_tga_f(f, bmp);
+   retsave = _al_save_tga_f(f, bmp);
 
-   al_fclose(f);
+   retclose = al_fclose(f);
 
-   return ret;
+   return retsave && retclose;
+}
+
+
+bool _al_identify_tga(ALLEGRO_FILE *f)
+{
+   uint8_t x[4];
+   al_fgetc(f); // skip id length
+   al_fread(f, x, 4);
+   
+   if (x[0] > 1) // TGA colormap must be 0 or 1
+      return false;
+   if ((x[1] & 0xf7) == 0) // type must be 1, 2, 3, 9, 10 or 11
+      return false;
+   if (x[2] != 0 || x[3] != 0) // color map must start at 0
+      return false;
+   return true;
 }
 
 

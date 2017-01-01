@@ -1,27 +1,31 @@
-#include <stdio.h>
-#include <stdarg.h>
-#include <math.h>
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_image.h>
 #include <allegro5/allegro_ttf.h>
-#include <allegro5/allegro_primitives.h>
 
 #include "common.c"
 
 /* How far has the text been scrolled. */
-float scroll_y;
+static float scroll_y;
 
 /* Total length of the scrolling text in pixels. */
-int text_length;
+static int text_length;
 
 /* The Alex logo. */
-ALLEGRO_BITMAP *logo;
+static ALLEGRO_BITMAP *logo;
 
 /* The star particle. */
-ALLEGRO_BITMAP *particle;
+static ALLEGRO_BITMAP *particle;
 
 /* The font we use for everything. */
-ALLEGRO_FONT *font;
+static ALLEGRO_FONT *font;
+
+
+/* Local pseudo-random number generator. */
+static int rnd(int *seed)
+{
+   *seed = (*seed + 1) * 1103515245 + 12345;
+   return ((*seed >> 16) & 0xffff);
+}
 
 
 /* Load a bitmap or font and exit with a message if it's missing. */
@@ -72,7 +76,7 @@ static void setup_3d_projection(ALLEGRO_TRANSFORM *projection)
    int dh = al_get_display_height(display);
    al_perspective_transform(projection, -180 * dw / dh, -180, 180,
       180 * dw / dh, 180, 3000);
-   al_set_projection_transform(display, projection);
+   al_use_projection_transform(projection);
 }
 
 
@@ -80,17 +84,22 @@ static void setup_3d_projection(ALLEGRO_TRANSFORM *projection)
 static void draw_stars(void)
 {
    ALLEGRO_TRANSFORM projection;
+   int seed;
    int i;
+
    al_set_blender(ALLEGRO_ADD, ALLEGRO_ONE, ALLEGRO_ONE);
 
-   srand(0);
+   seed = 0;
    for (i = 0; i < 100; i++) {
+      const int x = rnd(&seed);
+      const int y = rnd(&seed);
+      const int z = rnd(&seed);
+
       al_identity_transform(&projection);
-      al_translate_transform_3d(&projection, 0, 0, -2000 +
-         ((int)scroll_y * 1000 / text_length + rand()) % 2000 - 180);
+      al_translate_transform_3d(&projection, 0, 0,
+         -2000 + ((int)scroll_y * 1000 / text_length + z) % 2000 - 180);
       setup_3d_projection(&projection);
-      al_draw_bitmap(particle, rand() % 4000 - 2000,
-         rand() % 2000 - 1000, 0);
+      al_draw_bitmap(particle, x % 4000 - 2000, y % 2000 - 1000, 0);
    }
 }
 
@@ -179,12 +188,15 @@ static void draw_intro_text(void)
 }
 
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
    ALLEGRO_EVENT_QUEUE *queue;
    int redraw = 0;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -192,6 +204,7 @@ int main(void)
    al_init_image_addon();
    al_init_font_addon();
    al_init_ttf_addon();
+   init_platform_specific();
    al_install_keyboard();
 
    al_set_new_display_flags(ALLEGRO_RESIZABLE);

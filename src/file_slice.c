@@ -33,14 +33,17 @@ struct SLICE_DATA
    int mode;
 };
 
-static void slice_fclose(ALLEGRO_FILE *f)
+static bool slice_fclose(ALLEGRO_FILE *f)
 {
    SLICE_DATA *slice = al_get_file_userdata(f);
-   
+   bool ret;
+
    /* seek to end of slice */
-   al_fseek(slice->fp, slice->anchor + slice->size, ALLEGRO_SEEK_SET);
-   
+   ret = al_fseek(slice->fp, slice->anchor + slice->size, ALLEGRO_SEEK_SET);
+
    al_free(slice);
+
+   return ret;
 }
 
 static size_t slice_fread(ALLEGRO_FILE *f, void *ptr, size_t size)
@@ -135,11 +138,15 @@ static bool slice_fseek(ALLEGRO_FILE *f, int64_t offset, int whence)
       offset = slice->anchor;
    }
    else if ((size_t) offset > slice->anchor + slice->size) {
-      offset = slice->anchor + slice->size;
+      if (!(slice->mode & SLICE_EXPANDABLE)) {
+         offset = slice->anchor + slice->size;
+      }
    }
    
    if (al_fseek(slice->fp, offset, ALLEGRO_SEEK_SET)) {
       slice->pos = offset - slice->anchor;
+      if (slice->pos > slice->size)
+         slice->size = slice->pos;
       return true;
    }
    
@@ -152,10 +159,16 @@ static bool slice_feof(ALLEGRO_FILE *f)
    return slice->pos >= slice->size;
 }
 
-static bool slice_ferror(ALLEGRO_FILE *f)
+static int slice_ferror(ALLEGRO_FILE *f)
 {
    SLICE_DATA *slice = al_get_file_userdata(f);
    return al_ferror(slice->fp);
+}
+
+static const char *slice_ferrmsg(ALLEGRO_FILE *f)
+{
+   SLICE_DATA *slice = al_get_file_userdata(f);
+   return al_ferrmsg(slice->fp);
 }
 
 static void slice_fclearerr(ALLEGRO_FILE *f)
@@ -181,6 +194,7 @@ static const ALLEGRO_FILE_INTERFACE fi =
    slice_fseek,
    slice_feof,
    slice_ferror,
+   slice_ferrmsg,
    slice_fclearerr,
    NULL,
    slice_fsize

@@ -62,24 +62,22 @@ static bool create_default_mixer(void)
    int mixer_depth = ALLEGRO_AUDIO_DEPTH_FLOAT32;
 
    ALLEGRO_CONFIG *config = al_get_system_config();
-   if (config) {
-      const char *p;
-      p = al_get_config_value(config, "audio", "primary_voice_frequency");
-      if (p && p[0] != '\0') {
-         voice_frequency = atoi(p);
-      }
-      p = al_get_config_value(config, "audio", "primary_mixer_frequency");
-      if (p && p[0] != '\0') {
-         mixer_frequency = atoi(p);
-      }
-      p = al_get_config_value(config, "audio", "primary_voice_depth");
-      if (p && p[0] != '\0') {
-         voice_depth = string_to_depth(p);
-      }
-      p = al_get_config_value(config, "audio", "primary_mixer_depth");
-      if (p && p[0] != '\0') {
-         mixer_depth = string_to_depth(p);
-      }
+   const char *p;
+   p = al_get_config_value(config, "audio", "primary_voice_frequency");
+   if (p && p[0] != '\0') {
+      voice_frequency = atoi(p);
+   }
+   p = al_get_config_value(config, "audio", "primary_mixer_frequency");
+   if (p && p[0] != '\0') {
+      mixer_frequency = atoi(p);
+   }
+   p = al_get_config_value(config, "audio", "primary_voice_depth");
+   if (p && p[0] != '\0') {
+      voice_depth = string_to_depth(p);
+   }
+   p = al_get_config_value(config, "audio", "primary_mixer_depth");
+   if (p && p[0] != '\0') {
+      mixer_depth = string_to_depth(p);
    }
 
    if (!allegro_voice) {
@@ -99,6 +97,9 @@ static bool create_default_mixer(void)
          goto Error;
       }
    }
+
+   /* In case this function is called multiple times. */
+   al_detach_mixer(allegro_mixer);
 
    if (!al_attach_mixer_to_voice(allegro_mixer, allegro_voice)) {
       ALLEGRO_ERROR("al_attach_mixer_to_voice failed\n");
@@ -152,7 +153,7 @@ ALLEGRO_SAMPLE *al_create_sample(void *buf, unsigned int samples,
    spl->buffer.ptr = buf;
    spl->free_buf = free_buf;
 
-   _al_kcm_register_destructor(spl, (void (*)(void *)) al_destroy_sample);
+   spl->dtor_item = _al_kcm_register_destructor("sample", spl, (void (*)(void *)) al_destroy_sample);
 
    return spl;
 }
@@ -183,7 +184,7 @@ void al_destroy_sample(ALLEGRO_SAMPLE *spl)
    if (spl) {
       _al_kcm_foreach_destructor(stop_sample_instances_helper,
          al_get_sample_data(spl));
-      _al_kcm_unregister_destructor(spl);
+      _al_kcm_unregister_destructor(spl->dtor_item);
 
       if (spl->free_buf && spl->buffer.ptr) {
          al_free(spl->buffer.ptr);
@@ -307,6 +308,25 @@ bool al_restore_default_mixer(void)
       return false;
 
    return true;
+}
+
+
+/* Function: al_get_default_voice
+ */
+ALLEGRO_VOICE *al_get_default_voice(void)
+{
+   return allegro_voice;
+}
+
+
+/* Function: al_set_default_voice
+ */
+void al_set_default_voice(ALLEGRO_VOICE *voice)
+{
+   if (allegro_voice) {
+      al_destroy_voice(allegro_voice);
+   }
+   allegro_voice = voice;
 }
 
 

@@ -1,6 +1,5 @@
 #include <stdarg.h>
 #include "allegro5/allegro.h"
-#include "allegro5/allegro_image.h"
 #include "allegro5/allegro_font.h"
 #include "allegro5/allegro_primitives.h"
 
@@ -19,15 +18,17 @@ static void add_event(char const *f, ...)
    va_end(args);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_EVENT_QUEUE *queue;
    ALLEGRO_EVENT event;
    ALLEGRO_FONT *font;
-
-   int i;
    ALLEGRO_COLOR color, black, red, blue;
+   int i;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -36,7 +37,6 @@ int main(void)
    al_init_primitives_addon();
    al_install_mouse();
    al_install_keyboard();
-   al_init_image_addon();
    al_init_font_addon();
 
    al_set_new_display_flags(ALLEGRO_RESIZABLE);
@@ -45,9 +45,9 @@ int main(void)
       abort_example("Error creating display\n");
    }
 
-   font = al_load_font("data/fixed_font.tga", 1, 0);
+   font = al_create_builtin_font();
    if (!font) {
-      abort_example("data/fixed_font.tga not found\n");
+      abort_example("Error creating builtin font\n");
    }
    
    black = al_map_rgb_f(0, 0, 0);

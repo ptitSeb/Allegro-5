@@ -140,7 +140,7 @@ static void *curl_file_fopen(const char *path, const char *mode)
 }
 
 
-static void curl_file_fclose(ALLEGRO_FILE *f)
+static bool curl_file_fclose(ALLEGRO_FILE *f)
 {
    CURL_FILE *cf = al_get_file_userdata(f);
 
@@ -149,6 +149,7 @@ static void curl_file_fclose(ALLEGRO_FILE *f)
    if (cf->buffer)
       free(cf->buffer);
    free(cf);
+   return true;
 }
 
 
@@ -291,11 +292,19 @@ static bool curl_file_feof(ALLEGRO_FILE *f)
 }
 
 
-static bool curl_file_ferror(ALLEGRO_FILE *f)
+static int curl_file_ferror(ALLEGRO_FILE *f)
 {
    /* Not implemented. */
    (void)f;
    return false;
+}
+
+
+static const char *curl_file_ferrmsg(ALLEGRO_FILE *f)
+{
+   /* Not implemented. */
+   (void)f;
+   return "";
 }
 
 
@@ -336,6 +345,7 @@ static ALLEGRO_FILE_INTERFACE curl_file_vtable =
    curl_file_fseek,
    curl_file_feof,
    curl_file_ferror,
+   curl_file_ferrmsg,
    curl_file_fclearerr,
    curl_file_fungetc,
    curl_file_fsize

@@ -3,7 +3,6 @@
  */
 
 #include <allegro5/allegro.h>
-#include <allegro5/allegro_image.h>
 #include <allegro5/allegro_font.h>
 #include <allegro5/allegro_color.h>
 #include <stdio.h>
@@ -192,9 +191,9 @@ static void init(void)
 {
    ex.FPS = 60;
 
-   ex.font = al_load_font("data/fixed_font.tga", 0, 0);
+   ex.font = al_create_builtin_font();
    if (!ex.font) {
-      abort_example("data/fixed_font.tga not found.\n");
+      abort_example("Error creating builtin font.\n");
    }
    ex.background = al_color_name("beige");
    ex.text = al_color_name("blue");
@@ -202,10 +201,13 @@ static void init(void)
    ex.pattern = example_bitmap(100, 100);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -213,8 +215,8 @@ int main(void)
 
    al_install_keyboard();
    al_install_mouse();
-   al_init_image_addon();
    al_init_font_addon();
+   init_platform_specific();
 
    display = al_create_display(640, 480);
    if (!display) {

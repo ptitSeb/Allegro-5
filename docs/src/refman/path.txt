@@ -2,7 +2,9 @@
 
 These functions are declared in the main Allegro header file:
 
-    #include <allegro5/allegro.h>
+~~~~c
+ #include <allegro5/allegro.h>
+~~~~
 
 We define a path as an optional *drive*, followed by zero or more *directory
 components*, followed by an optional *filename*.  The filename may be broken
@@ -20,7 +22,7 @@ directory name in the path.  Otherwise the last component is treated as the
 filename.
 The string may be NULL for an empty path.
 
-See also: [al_create_path], [al_destroy_path]
+See also: [al_create_path_for_directory], [al_destroy_path]
 
 ## API: al_create_path_for_directory
 

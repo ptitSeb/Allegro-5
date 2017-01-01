@@ -15,7 +15,7 @@ static ALLEGRO_BITMAP *load_bitmap(char const *filename)
    return bitmap;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *bitmap[2];
@@ -26,6 +26,9 @@ int main(void)
    int t = 0;
    const char* pixel_file = NULL;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
@@ -33,6 +36,7 @@ int main(void)
    al_install_mouse();
    al_install_keyboard();
    al_init_image_addon();
+   init_platform_specific();
 
    al_set_new_bitmap_flags(ALLEGRO_MIN_LINEAR | ALLEGRO_MAG_LINEAR |
       ALLEGRO_MIPMAP);

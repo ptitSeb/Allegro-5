@@ -1,6 +1,6 @@
-/*         ______   ___    ___ 
+/*         ______   ___    ___
  *        /\  _  \ /\_ \  /\_ \
- *        \ \ \L\ \\//\ \ \//\ \      __     __   _ __   ___ 
+ *        \ \ \L\ \\//\ \ \//\ \      __     __   _ __   ___
  *         \ \  __ \ \ \ \  \ \ \   /'__`\ /'_ `\/\`'__\/ __`\
  *          \ \ \/\ \ \_\ \_ \_\ \_/\  __//\ \L\ \ \ \//\ \L\ \
  *           \ \_\ \_\/\____\/\____\ \____\ \____ \ \_\\ \____/
@@ -18,7 +18,8 @@
 
 #include "allegro5/allegro.h"
 #include "allegro5/platform/alplatf.h"
-
+#include "allegro5/internal/aintern.h"
+#include ALLEGRO_INTERNAL_HEADER
 
 
 /* Function: al_get_allegro_version
@@ -41,5 +42,13 @@ int al_run_main(int argc, char **argv, int (*user_main)(int, char **))
 #endif
 }
 
+int _al_get_least_multiple(int val, int mul)
+{
+   int rem = val % mul;
+   if (rem == 0)
+      return val;
+   else
+      return val + mul - rem;
+}
 
 /* vim: set sts=3 sw=3 et: */

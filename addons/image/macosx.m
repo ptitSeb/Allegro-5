@@ -62,8 +62,8 @@ static ALLEGRO_BITMAP *really_load_image(char *buffer, int size, int flags)
       int i, j;
       {
          for (i = 0; i < h; i++) {
-            uint8_t *data_row = lock->data + lock->pitch * i;
-            uint8_t *source_row = pixels + w * samples * i;
+            uint8_t *data_row = (uint8_t *) lock->data + lock->pitch * i;
+            uint8_t *source_row = (uint8_t *) pixels + w * samples * i;
             if (samples == 4) {
                if (premul) {
                   for (j = 0; j < w; j++) {
@@ -191,7 +191,7 @@ bool _al_osx_save_image_f(ALLEGRO_FILE *f, const char *ident, ALLEGRO_BITMAP *bm
    
    NSImage *image = NSImageFromAllegroBitmap(bmp);
    NSArray *reps = [image representations];
-   NSData *nsdata = [NSBitmapImageRep representationOfImageRepsInArray: reps usingType: type properties: nil];
+   NSData *nsdata = [NSBitmapImageRep representationOfImageRepsInArray: reps usingType: type properties: [NSDictionary dictionary]];
    
    size_t size = (size_t)[nsdata length];
    bool ret = al_fwrite(f, [nsdata bytes], size) == size;
@@ -207,19 +207,20 @@ bool _al_osx_save_image_f(ALLEGRO_FILE *f, const char *ident, ALLEGRO_BITMAP *bm
 bool _al_osx_save_image(const char *filename, ALLEGRO_BITMAP *bmp)
 {
    ALLEGRO_FILE *fp;
-   bool ret = false;
+   bool retsave = false;
+   bool retclose = false;
 
    fp = al_fopen(filename, "wb");
    if (fp) {
       ALLEGRO_PATH *path = al_create_path(filename);
       if (path) {
-         ret = _al_osx_save_image_f(fp, al_get_path_extension(path), bmp);
+         retsave = _al_osx_save_image_f(fp, al_get_path_extension(path), bmp);
          al_destroy_path(path);
       }
-      al_fclose(fp);
+      retclose = al_fclose(fp);
    }
 
-   return ret;
+   return retsave && retclose;
 }
 
 

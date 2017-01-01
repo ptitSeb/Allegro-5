@@ -36,11 +36,17 @@ static void stream_read(void *source, void **vbuf, unsigned int *samples,
  *  in the returned audio data and it may be less or equal to the requested
  *  samples count.
  */
-const void *_al_voice_update(ALLEGRO_VOICE *voice, unsigned int *samples)
+const void *_al_voice_update(ALLEGRO_VOICE *voice, ALLEGRO_MUTEX *mutex,
+   unsigned int *samples)
 {
    void *buf = NULL;
 
+   /* The mutex parameter is intended to make it obvious at the call site
+    * that the voice mutex will be acquired here.
+    */
    ASSERT(voice);
+   ASSERT(voice->mutex == mutex);
+   (void)mutex;
 
    al_lock_mutex(voice->mutex);
    if (voice->attached_stream) {
@@ -88,7 +94,8 @@ ALLEGRO_VOICE *al_create_voice(unsigned int freq,
       return NULL;
    }
 
-   _al_kcm_register_destructor(voice, (void (*)(void *)) al_destroy_voice);
+   voice->dtor_item = _al_kcm_register_destructor("voice", voice,
+      (void (*)(void *)) al_destroy_voice);
 
    return voice;
 }
@@ -99,7 +106,7 @@ ALLEGRO_VOICE *al_create_voice(unsigned int freq,
 void al_destroy_voice(ALLEGRO_VOICE *voice)
 {
    if (voice) {
-      _al_kcm_unregister_destructor(voice);
+      _al_kcm_unregister_destructor(voice->dtor_item);
 
       al_detach_voice(voice);
       ASSERT(al_get_voice_playing(voice) == false);
@@ -503,15 +510,22 @@ bool al_set_voice_playing(ALLEGRO_VOICE *voice, bool val)
          return true;
       }
 
-      return _al_kcm_set_voice_playing(voice, val);
+      return _al_kcm_set_voice_playing(voice, voice->mutex, val);
    }
 }
 
 
-bool _al_kcm_set_voice_playing(ALLEGRO_VOICE *voice, bool val)
+bool _al_kcm_set_voice_playing(ALLEGRO_VOICE *voice, ALLEGRO_MUTEX *mutex,
+   bool val)
 {
    bool ret;
+
+   /* The mutex parameter is intended to make it obvious at the call site
+    * that the voice mutex will be acquired here.
+    */
    ASSERT(voice);
+   ASSERT(voice->mutex == mutex);
+   (void)mutex;
 
    al_lock_mutex(voice->mutex);
    // XXX change methods

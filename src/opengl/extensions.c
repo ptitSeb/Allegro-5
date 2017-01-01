@@ -15,6 +15,7 @@
  *      Based on AllegroGL extensions management.
  */
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -91,13 +92,21 @@ ALLEGRO_DEBUG_CHANNEL("opengl")
 
 
 
-#if !defined ALLEGRO_CFG_OPENGLES
 static uint32_t parse_opengl_version(const char *s)
 {
    char *p = (char *) s;
    int v[4] = {0, 0, 0, 0};
    int n;
    uint32_t ver;
+
+   /* For OpenGL ES version strings have the form:
+    * "OpenGL ES-<profile> <major>.<minor>"
+    * So for example: "OpenGL ES-CM 2.0". We simply skip any non-digit
+    * characters and then parse it like for normal OpenGL.
+    */
+   while (*p && !isdigit(*p)) {
+      p++;
+   }
 
    /* e.g. "4.0.0 Vendor blah blah" */
    for (n = 0; n < 4; n++) {
@@ -118,21 +127,14 @@ static uint32_t parse_opengl_version(const char *s)
    ALLEGRO_DEBUG("Parsed '%s' as 0x%08x\n", s, ver);
    return ver;
 }
-#endif
 
 
 
 /* Reads version info out of glGetString(GL_VERSION) */
 static uint32_t _al_ogl_version(void)
 {
-#if !defined ALLEGRO_CFG_OPENGLES
-   ALLEGRO_CONFIG *cfg;
-   const char *str;
-
-   cfg = al_get_system_config();
-   if (cfg) {
-      char const *value = al_get_config_value(cfg,
-	 "opengl", "force_opengl_version");
+   char const *value = al_get_config_value(al_get_system_config(), "opengl",
+      "force_opengl_version");
       if (value) {
          uint32_t v = parse_opengl_version(value);
          ALLEGRO_INFO("OpenGL version forced to %d.%d.%d.%d.\n",
@@ -142,10 +144,16 @@ static uint32_t _al_ogl_version(void)
             (v & 0xff));
          return v;
       }
-   }
+
+   const char *str;
 
    str = (const char *)glGetString(GL_VERSION);
    if (str) {
+      #ifdef ALLEGRO_CFG_OPENGLES
+      char *str2 = strstr(str, "ES ");
+      if (str2)
+         str = str2 + 3;
+      #endif
       return parse_opengl_version(str);
    }
    else {
@@ -154,16 +162,7 @@ static uint32_t _al_ogl_version(void)
        */
       return _ALLEGRO_OPENGL_VERSION_1_0;
    }
-#else
-   /* XXX this is asking for trouble, and should be documented */
-   const char *s = (char *)glGetString(GL_VERSION);
-   if (strstr(s, "2.0"))
-      return _ALLEGRO_OPENGL_VERSION_2_0;
-   else if (strstr(s, "1.1"))
-      return _ALLEGRO_OPENGL_VERSION_1_1;
-   else
-      return _ALLEGRO_OPENGL_VERSION_0;
-#endif
+
 }
 
 
@@ -277,6 +276,36 @@ static ALLEGRO_OGL_EXT_API *create_extension_api_table(void)
 
 
 
+typedef void (*VOID_FPTR)(void);
+/* GCC 4.8.2 and possibly others are really slow at optimizing the 100's of the
+ * if statements in the load_extensions function below, so we extract them to
+ * this function.
+ */
+static VOID_FPTR load_extension(const char* name)
+{
+   VOID_FPTR fptr = NULL;
+#ifdef ALLEGRO_WINDOWS
+   fptr = (VOID_FPTR)wglGetProcAddress(name);
+#elif defined ALLEGRO_UNIX
+   fptr = (VOID_FPTR)alXGetProcAddress((const GLubyte*)name);
+#elif defined ALLEGRO_MACOSX
+   CFStringRef cfstr = CFStringCreateWithCStringNoCopy(NULL, name,
+      kCFStringEncodingUTF8, kCFAllocatorNull);
+   if (cfstr) {
+      fptr = (VOID_FPTR)CFBundleGetFunctionPointerForName(opengl_bundle_ref, cfstr);
+      CFRelease(cfstr);
+   }
+#elif defined ALLEGRO_SDL
+   fptr = SDL_GL_GetProcAddress(name);
+#endif
+   if (fptr) {
+      ALLEGRO_DEBUG("%s successfully loaded (%p)\n", name, fptr);
+   }
+   return fptr;
+}
+
+
+
 /* Load the extension API addresses into the table.
  * Should only be done on context creation.
  */
@@ -297,16 +326,14 @@ static void load_extensions(ALLEGRO_OGL_EXT_API *ext)
 #ifdef ALLEGRO_WINDOWS
 
    #define AGL_API(type, name, args)                                 \
-      ext->name = (_ALLEGRO_gl##name##_t)wglGetProcAddress("gl" #name); \
-      if (ext->name) { ALLEGRO_DEBUG("gl" #name " successfully loaded\n"); }
+      ext->name = (_ALLEGRO_gl##name##_t)load_extension("gl" #name);
 
       #include "allegro5/opengl/GLext/gl_ext_api.h"
 
    #undef AGL_API
 
    #define AGL_API(type, name, args)                                  \
-      ext->name = (_ALLEGRO_wgl##name##_t)wglGetProcAddress("wgl" #name); \
-      if (ext->name) { ALLEGRO_DEBUG("wgl" #name " successfully loaded\n"); }
+      ext->name = (_ALLEGRO_wgl##name##_t)load_extension("wgl" #name);
 
       #include "allegro5/opengl/GLext/wgl_ext_api.h"
 
@@ -315,16 +342,14 @@ static void load_extensions(ALLEGRO_OGL_EXT_API *ext)
 #elif defined ALLEGRO_UNIX
 
    #define AGL_API(type, name, args)                                               \
-      ext->name = (_ALLEGRO_gl##name##_t)alXGetProcAddress((const GLubyte*)"gl" #name);  \
-      if (ext->name) { ALLEGRO_DEBUG("gl" #name " successfully loaded (%p)\n", ext->name); }
+      ext->name = (_ALLEGRO_gl##name##_t)load_extension("gl" #name);
 
       #include "allegro5/opengl/GLext/gl_ext_api.h"
 
    #undef AGL_API
 
    #define AGL_API(type, name, args)                                               \
-      ext->name = (_ALLEGRO_glX##name##_t)alXGetProcAddress((const GLubyte*)"glX" #name); \
-      if (ext->name) { ALLEGRO_DEBUG("glX" #name " successfully loaded\n"); }
+      ext->name = (_ALLEGRO_glX##name##_t)load_extension("glX" #name);
 
       #include "allegro5/opengl/GLext/glx_ext_api.h"
 
@@ -333,8 +358,16 @@ static void load_extensions(ALLEGRO_OGL_EXT_API *ext)
 #elif defined ALLEGRO_MACOSX
 
 #define AGL_API(type, name, args)                                                                 \
-      ext->name = (_ALLEGRO_gl##name##_t)CFBundleGetFunctionPointerForName(opengl_bundle_ref, CFSTR("gl" # name)); \
-      if (ext->name) { ALLEGRO_DEBUG("gl" #name " successfully loaded\n"); }
+      ext->name = (_ALLEGRO_gl##name##_t)load_extension("gl" # name);
+
+      #include "allegro5/opengl/GLext/gl_ext_api.h"
+
+   #undef AGL_API
+
+#elif defined ALLEGRO_SDL
+
+#define AGL_API(type, name, args)                                              \
+      ext->name = (_ALLEGRO_gl##name##_t)load_extension("gl" # name);
 
       #include "allegro5/opengl/GLext/gl_ext_api.h"
 
@@ -500,7 +533,6 @@ static bool _ogl_is_extension_supported(const char *extension,
 static bool _ogl_is_extension_with_version_supported(
    const char *extension, ALLEGRO_DISPLAY *disp, uint32_t ver)
 {
-   ALLEGRO_CONFIG *cfg;
    char const *value;
 
   /* For testing purposes, any OpenGL extension can be disable in
@@ -511,16 +543,13 @@ static bool _ogl_is_extension_with_version_supported(
     * GL_EXT_framebuffer_object=0
     * 
     */
-   cfg = al_get_system_config();
-   if (cfg) {
-      value = al_get_config_value(cfg,
+   value = al_get_config_value(al_get_system_config(),
          "opengl_disabled_extensions", extension);
       if (value) {
          ALLEGRO_WARN("%s found in [opengl_disabled_extensions].\n",
             extension);
          return false;
       }
-   }
 
    /* If the extension is included in the OpenGL version, there is no
     * need to check the extensions list.
@@ -805,17 +834,6 @@ void _al_ogl_manage_extensions(ALLEGRO_DISPLAY *gl_disp)
    #include "allegro5/opengl/GLext/wgl_ext_list.h"
 #undef AGL_EXT
 #endif
-
-    /* TODO: use these somewhere */
-#if 0
-   for (i = 0; i < 5; i++) {
-      __allegro_gl_texture_read_format[i] = -1;
-      __allegro_gl_texture_components[i] = GL_RGB;
-   }
-   __allegro_gl_texture_read_format[3] = GL_UNSIGNED_BYTE;
-   __allegro_gl_texture_read_format[4] = GL_UNSIGNED_BYTE;
-   __allegro_gl_texture_components[4] = GL_RGBA;
-#endif /* #if 0 */
 
    /* Get max texture size */
    glGetIntegerv(GL_MAX_TEXTURE_SIZE,

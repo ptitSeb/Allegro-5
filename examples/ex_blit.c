@@ -237,10 +237,13 @@ static void init(void)
    ex.pattern = example_bitmap(100, 100);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_TIMER *timer;
+
+   (void)argc;
+   (void)argv;
 
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
@@ -250,6 +253,7 @@ int main(void)
    al_install_mouse();
    al_init_image_addon();
    al_init_font_addon();
+   init_platform_specific();
 
    display = al_create_display(640, 480);
    if (!display) {

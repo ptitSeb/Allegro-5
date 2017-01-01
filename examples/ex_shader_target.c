@@ -49,7 +49,7 @@ static ALLEGRO_BITMAP *make_region(ALLEGRO_BITMAP *parent,
    return sub;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_DISPLAY *display;
    ALLEGRO_BITMAP *image;
@@ -61,11 +61,15 @@ int main(void)
    ALLEGRO_TRANSFORM t;
    int i;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
    al_install_keyboard();
    al_init_image_addon();
+   init_platform_specific();
 
    al_set_new_display_flags(ALLEGRO_PROGRAMMABLE_PIPELINE);
    display = al_create_display(640, 480);
