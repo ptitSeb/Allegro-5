@@ -76,10 +76,11 @@ static void pando_shutdown_system(void)
 
    if (getenv("DISPLAY")) {
       _al_thread_join(&spnd->thread);
-      XCloseDisplay(spnd->x11display);
+      /*XSync(spnd->x11display, True);
+      XCloseDisplay(spnd->x11display);*/
    }
 
-   raise(SIGINT);
+   //raise(SIGINT);
 
    al_free(spnd);
 
