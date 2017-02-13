@@ -1,6 +1,5 @@
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_font.h>
-#include <allegro5/allegro_image.h>
 #include <allegro5/allegro_primitives.h>
 #include <stdio.h>
 
@@ -9,7 +8,7 @@
 int width = 640;
 int height = 480;
 
-int main(void)
+int main(int argc, char **argv)
 {
    ALLEGRO_FONT *font;
    ALLEGRO_DISPLAY *display;
@@ -20,6 +19,9 @@ int main(void)
    int fake_x = 0, fake_y = 0;
    ALLEGRO_COLOR white;
 
+   (void)argc;
+   (void)argv;
+
    if (!al_init()) {
       abort_example("Could not init Allegro.\n");
    }
@@ -28,7 +30,6 @@ int main(void)
 
    al_init_primitives_addon();
    al_init_font_addon();
-   al_init_image_addon();
    al_install_mouse();
    al_install_keyboard();
 
@@ -45,7 +46,7 @@ int main(void)
    al_register_event_source(event_queue, al_get_mouse_event_source());
    al_register_event_source(event_queue, al_get_keyboard_event_source());
 
-   font = al_load_font("data/fixed_font.tga", 0, 0);
+   font = al_create_builtin_font();
    white = al_map_rgb_f(1, 1, 1);
 
    while (1) {      
