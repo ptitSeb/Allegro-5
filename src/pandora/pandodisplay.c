@@ -20,9 +20,18 @@ ALLEGRO_DEBUG_CHANNEL("display")
 #endif
 #include "eglport.h"
 
+// with USE_XCURSOR, the function from x/xcursor.c are used.
+#define USE_XCURSOR
+
+#ifdef USE_XCURSOR
+#include "allegro5/internal/aintern_xcursor.h"
+#endif
+
 #define PITCH 128
 #define DEFAULT_CURSOR_WIDTH 17
 #define DEFAULT_CURSOR_HEIGHT 28
+
+static float mouse_scale_ratio_x = 1.0f, mouse_scale_ratio_y = 1.0f;
 
 static const ALLEGRO_XWIN_DISPLAY_OVERRIDABLE_INTERFACE default_overridable_vt;
 static const ALLEGRO_XWIN_DISPLAY_OVERRIDABLE_INTERFACE *gtk_override_vt = NULL;
@@ -64,6 +73,7 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
 	#ifdef ALLEGRO_CFG_OPENGLES2
 	display->flags |= ALLEGRO_PROGRAMMABLE_PIPELINE;
 	#endif
+printf("pandora_create_display(%d, %d)\n", w, h);
 //    if (display->flags & ALLEGRO_FULLSCREEN_WINDOW) {
 //        _al_raspberrypi_get_screen_size(adapter, &w, &h);
 //    }
@@ -89,6 +99,10 @@ static ALLEGRO_DISPLAY *pandora_create_display(int w, int h)
 
    display->w = w;
    display->h = h;
+
+   mouse_scale_ratio_x = (float)display->w / 800;
+   mouse_scale_ratio_y = (float)display->h / 480;
+
 
 /*   if (EGL_Open(w, h)) {
       // FIXME: cleanup
@@ -244,6 +258,14 @@ static bool pandora_set_current_display(ALLEGRO_DISPLAY *d)
    return true;
 }
 
+void _al_pandora_get_mouse_scale_ratios(float *x, float *y)
+{
+	*x = mouse_scale_ratio_x;
+	*y = mouse_scale_ratio_y;
+}
+
+
+
 static int pandora_get_orientation(ALLEGRO_DISPLAY *d)
 {
    (void)d;
@@ -368,6 +390,7 @@ static bool pandora_acknowledge_resize(ALLEGRO_DISPLAY *d)
    return true;
 }
 
+#ifndef USE_XCURSOR
 static bool pandora_set_mouse_cursor(ALLEGRO_DISPLAY *display,
                                   ALLEGRO_MOUSE_CURSOR *cursor)
 {
@@ -386,20 +409,20 @@ static bool pandora_set_system_mouse_cursor(ALLEGRO_DISPLAY *display,
 
 static bool pandora_show_mouse_cursor(ALLEGRO_DISPLAY *display)
 {
-    ALLEGRO_DISPLAY_PANDORA *pidisplay = (ALLEGRO_DISPLAY_PANDORA *)display;
+    ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
     ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
-    XFixesShowCursor(system->x11display, pidisplay->window);
+    XFixesShowCursor(system->x11display, pando->window);
     return true;
 }
 
 static bool pandora_hide_mouse_cursor(ALLEGRO_DISPLAY *display)
 {
-    ALLEGRO_DISPLAY_PANDORA *pidisplay = (ALLEGRO_DISPLAY_PANDORA *)display;
+    ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
     ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
-    XFixesHideCursor(system->x11display, pidisplay->window);
+    XFixesHideCursor(system->x11display, pando->window);
     return true;
 }
-
+#endif
 void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
    bool delay_hack)
 {
@@ -443,11 +466,14 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void)
 
     _al_ogl_add_drawing_functions(vt);
 
+#ifndef USE_XCURSOR
     vt->set_mouse_cursor = pandora_set_mouse_cursor;
     vt->set_system_mouse_cursor = pandora_set_system_mouse_cursor;
     vt->show_mouse_cursor = pandora_show_mouse_cursor;
     vt->hide_mouse_cursor = pandora_hide_mouse_cursor;
-    
+#else
+    _al_xwin_add_cursor_functions(vt);
+#endif
     return vt;
 }
 
@@ -491,8 +517,9 @@ static void xdpy_destroy_display_hook_default(ALLEGRO_DISPLAY *d, bool is_last)
 
 static bool xdpy_resize_display_default(ALLEGRO_DISPLAY *d, int w, int h)
 {
-   ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
-   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)d;
+//   ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+//   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)d;
+   (void)d;
    (void)w;
    (void)h;
    return true;
@@ -553,7 +580,7 @@ static void xdpy_set_fullscreen_window_default(ALLEGRO_DISPLAY *display, bool on
 static void xdpy_set_window_position_default(ALLEGRO_DISPLAY *display,
    int x, int y)
 {
-   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_XGLX *)display;
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
    ALLEGRO_SYSTEM_PANDORA *system = (void *)al_get_system_driver();
    Window root, parent, child, *children;
    unsigned int n;
@@ -582,7 +609,7 @@ static void xdpy_set_window_position_default(ALLEGRO_DISPLAY *display,
 static bool xdpy_set_window_constraints_default(ALLEGRO_DISPLAY *display,
    int min_w, int min_h, int max_w, int max_h)
 {
-   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_XGLX *)display;
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
 
    pando->display.min_w = min_w;
    pando->display.min_h = min_h;

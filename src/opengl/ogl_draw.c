@@ -550,7 +550,11 @@ static void ogl_update_transformation(ALLEGRO_DISPLAY* disp,
       /* glViewport requires the bottom-left coordinate of the corner. */
       glViewport(target->xofs, ogl_extra->true_h - (target->yofs + target->h), target->w, target->h);
    } else {
+      #ifdef ALLEGRO_PANDORA
+      glViewport(0, 0, 800, 480);   // is that correct???
+      #else
       glViewport(0, 0, target->w, target->h);
+      #endif
    }
 }
 

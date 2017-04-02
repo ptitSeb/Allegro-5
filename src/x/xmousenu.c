@@ -251,6 +251,12 @@ static bool xmouse_set_mouse_xy(ALLEGRO_DISPLAY *display, int x, int y)
    x /= scale_x;
    y /= scale_y;
 #endif
+#ifdef ALLEGRO_PANDORA
+   float scale_x, scale_y;
+   _al_pandora_get_mouse_scale_ratios(&scale_x, &scale_y);
+   x /= scale_x;
+   y /= scale_y;
+#endif
 
    _al_mutex_lock(&system->lock);
 
@@ -457,6 +463,12 @@ void _al_xwin_mouse_motion_notify_handler(int x, int y,
 #ifdef ALLEGRO_RASPBERRYPI
    float scale_x, scale_y;
    _al_raspberrypi_get_mouse_scale_ratios(&scale_x, &scale_y);
+   x *= scale_x;
+   y *= scale_y;
+#endif
+#ifdef ALLEGRO_PANDORA
+   float scale_x, scale_y;
+   _al_pandora_get_mouse_scale_ratios(&scale_x, &scale_y);
    x *= scale_x;
    y *= scale_y;
 #endif

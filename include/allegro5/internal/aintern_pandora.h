@@ -82,4 +82,6 @@ void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
 
 ALLEGRO_MOUSE_DRIVER _al_mousedrv_linux_evdev;
 
+void _al_pandora_get_mouse_scale_ratios(float *x, float *y); // used by X mouse driver
+
 #endif
