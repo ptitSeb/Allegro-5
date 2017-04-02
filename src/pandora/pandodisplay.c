@@ -24,6 +24,8 @@ ALLEGRO_DEBUG_CHANNEL("display")
 #define DEFAULT_CURSOR_WIDTH 17
 #define DEFAULT_CURSOR_HEIGHT 28
 
+static const ALLEGRO_XWIN_DISPLAY_OVERRIDABLE_INTERFACE default_overridable_vt;
+static const ALLEGRO_XWIN_DISPLAY_OVERRIDABLE_INTERFACE *gtk_override_vt = NULL;
 
 static ALLEGRO_DISPLAY_INTERFACE *vt;
 
@@ -403,6 +405,7 @@ void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
 {
    (void)d;
    (void)old_resize_count;
+   (void)delay_hack;
 }
 
 /* Obtain a reference to this driver. */
@@ -446,4 +449,197 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void)
     vt->hide_mouse_cursor = pandora_hide_mouse_cursor;
     
     return vt;
+}
+
+/* GTK stuff */
+static bool xdpy_create_display_hook_default(ALLEGRO_DISPLAY *display,
+   int w, int h)
+{
+   ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+   ALLEGRO_DISPLAY_PANDORA *d = (ALLEGRO_DISPLAY_PANDORA *)display;
+   (void)w;
+   (void)h;
+
+   XLockDisplay(system->x11display);
+
+   XMapWindow(system->x11display, d->window);
+   ALLEGRO_DEBUG("X11 window mapped.\n");
+
+   d->wm_delete_window_atom = XInternAtom(system->x11display,
+      "WM_DELETE_WINDOW", False);
+   XSetWMProtocols(system->x11display, d->window, &d->wm_delete_window_atom, 1);
+
+   XUnlockDisplay(system->x11display);
+
+   d->overridable_vt = &default_overridable_vt;
+
+   return true;
+}
+
+static void xdpy_destroy_display_hook_default(ALLEGRO_DISPLAY *d, bool is_last)
+{
+   ALLEGRO_SYSTEM_PANDORA *s = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)d;
+   (void)is_last;
+
+   EGL_Close();
+
+   ALLEGRO_DEBUG("destroy window.\n");
+   XDestroyWindow(s->x11display, pando->window);
+
+}
+
+static bool xdpy_resize_display_default(ALLEGRO_DISPLAY *d, int w, int h)
+{
+   ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)d;
+   (void)w;
+   (void)h;
+   return true;
+}
+
+
+static void xdpy_set_window_title_default(ALLEGRO_DISPLAY *display, const char *title)
+{
+   ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
+
+   {
+      Atom WM_NAME = XInternAtom(system->x11display, "WM_NAME", False);
+      Atom _NET_WM_NAME = XInternAtom(system->x11display, "_NET_WM_NAME", False);
+      char *list[1] = { (char *) title };
+      XTextProperty property;
+
+      Xutf8TextListToTextProperty(system->x11display, list, 1, XUTF8StringStyle,
+         &property);
+      XSetTextProperty(system->x11display, pando->window, &property, WM_NAME);
+      XSetTextProperty(system->x11display, pando->window, &property, _NET_WM_NAME);
+      //XSetTextProperty(system->x11display, pando->window, &property, XA_WM_NAME);
+      XFree(property.value);
+   }
+   {
+      XClassHint *hint = XAllocClassHint();
+      if (hint) {
+         ALLEGRO_PATH *exepath = al_get_standard_path(ALLEGRO_EXENAME_PATH);
+         // hint doesn't use a const char*, so we use strdup to create a non const string
+         hint->res_name = strdup(al_get_path_basename(exepath));
+         hint->res_class = strdup(al_get_path_basename(exepath));
+         XSetClassHint(system->x11display, pando->window, hint);
+         free(hint->res_name);
+         free(hint->res_class);
+         XFree(hint);
+         al_destroy_path(exepath);
+      }
+   }
+}
+
+static void xdpy_set_fullscreen_window_default(ALLEGRO_DISPLAY *display, bool onoff)
+{
+   ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+   if (onoff == !(display->flags & ALLEGRO_FULLSCREEN_WINDOW)) {
+      _al_mutex_lock(&system->lock);
+      _al_xwin_reset_size_hints(display);
+      _al_xwin_set_fullscreen_window(display, 2);
+      /* XXX Technically, the user may fiddle with the _NET_WM_STATE_FULLSCREEN
+       * property outside of Allegro so this flag may not be in sync with
+       * reality.
+       */
+      display->flags ^= ALLEGRO_FULLSCREEN_WINDOW;
+      _al_xwin_set_size_hints(display, INT_MAX, INT_MAX);
+      _al_mutex_unlock(&system->lock);
+   }
+}
+
+static void xdpy_set_window_position_default(ALLEGRO_DISPLAY *display,
+   int x, int y)
+{
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_XGLX *)display;
+   ALLEGRO_SYSTEM_PANDORA *system = (void *)al_get_system_driver();
+   Window root, parent, child, *children;
+   unsigned int n;
+
+   _al_mutex_lock(&system->lock);
+
+   /* To account for the window border, we have to find the parent window which
+    * draws the border. If the parent is the root though, then we should not
+    * translate.
+    */
+   XQueryTree(system->x11display, pando->window, &root, &parent, &children, &n);
+   if (parent != root) {
+      XTranslateCoordinates(system->x11display, parent, pando->window,
+         x, y, &x, &y, &child);
+   }
+
+   XMoveWindow(system->x11display, pando->window, x, y);
+   XFlush(system->x11display);
+
+   /*pando->x = x;
+   pando->y = y;*/
+
+   _al_mutex_unlock(&system->lock);
+}
+
+static bool xdpy_set_window_constraints_default(ALLEGRO_DISPLAY *display,
+   int min_w, int min_h, int max_w, int max_h)
+{
+   ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_XGLX *)display;
+
+   pando->display.min_w = min_w;
+   pando->display.min_h = min_h;
+   pando->display.max_w = max_w;
+   pando->display.max_h = max_h;
+
+   int w = pando->display.w;
+   int h = pando->display.h;
+   int posX;
+   int posY;
+
+   if (min_w > 0 && w < min_w) {
+      w = min_w;
+   }
+   if (min_h > 0 && h < min_h) {
+      h = min_h;
+   }
+   if (max_w > 0 && w > max_w) {
+      w = max_w;
+   }
+   if (max_h > 0 && h > max_h) {
+      h = max_h;
+   }
+
+   al_get_window_position(display, &posX, &posY);
+   _al_xwin_set_size_hints(display, posX, posY);
+   /* Resize the display to its current size so constraints take effect. */
+   al_resize_display(display, w, h);
+
+   return true;
+}
+
+static const ALLEGRO_XWIN_DISPLAY_OVERRIDABLE_INTERFACE default_overridable_vt =
+{
+   xdpy_create_display_hook_default,
+   xdpy_destroy_display_hook_default,
+   xdpy_resize_display_default,
+   xdpy_set_window_title_default,
+   xdpy_set_fullscreen_window_default,
+   xdpy_set_window_position_default,
+   xdpy_set_window_constraints_default
+};
+
+
+bool _al_xwin_set_gtk_display_overridable_interface(uint32_t check_version,
+   const ALLEGRO_XWIN_DISPLAY_OVERRIDABLE_INTERFACE *vt)
+{
+   /* The version of the native dialogs addon must exactly match the core
+    * library version.
+    */
+   if (vt && check_version == ALLEGRO_VERSION_INT) {
+      ALLEGRO_DEBUG("GTK vtable made available\n");
+      gtk_override_vt = vt;
+      return true;
+   }
+
+   ALLEGRO_DEBUG("GTK vtable reset\n");
+   gtk_override_vt = NULL;
+   return (vt == NULL);
 }
