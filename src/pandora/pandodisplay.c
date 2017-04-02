@@ -214,7 +214,18 @@ printf("pandora_create_display(%d, %d)\n", w, h);
 	
    return display;
 }
-
+#ifndef ALLEGRO_CFG_OPENGLES2
+PFNGLBLENDEQUATIONOESPROC 	glBlendEquation = NULL;
+PFNGLBLENDFUNCSEPARATEOESPROC 	glBlendFuncSeparate = NULL;
+PFNGLBLENDEQUATIONSEPARATEOESPROC glBlendEquationSeparate = NULL;
+PFNGLGENERATEMIPMAPOESPROC	glGenerateMipmapEXT = NULL;
+PFNGLBINDFRAMEBUFFEROESPROC	glBindFramebufferEXT = NULL;
+PFNGLDELETEFRAMEBUFFERSOESPROC	glDeleteFramebuffersEXT = NULL;
+PFNGLGENFRAMEBUFFERSOESPROC	glGenFramebuffersEXT = NULL;
+PFNGLCHECKFRAMEBUFFERSTATUSOESPROC glCheckFramebufferStatusEXT = NULL;
+PFNGLFRAMEBUFFERTEXTURE2DOESPROC glFramebufferTexture2DEXT = NULL;
+PFNGLDRAWTEXIOESPROC		glDrawTexiOES = NULL;
+#endif
 static void pandora_destroy_display(ALLEGRO_DISPLAY *d)
 {
 //printf("pandora_destroy_display(%x)\n", d);

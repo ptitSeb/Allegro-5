@@ -66,6 +66,7 @@
 #if ((defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID) && !defined(ALLEGRO_CFG_OPENGLES2)) || !(defined ALLEGRO_PANDORA || defined ALLEGRO_ODROID)
 
 #include <GLES/gl.h>
+#undef GL_GLEXT_PROTOTYPES
 #include <GLES/glext.h>
 #endif
 
@@ -87,12 +88,20 @@
 #define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING_OES
 #define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER_OES
 #define GL_RENDERBUFFER_EXT GL_RENDERBUFFER_OES
-#define glBlendEquation glBlendEquationOES
-#define glBlendFuncSeparate glBlendFuncSeparateOES
-#define glBlendEquationSeparate glBlendEquationSeparateOES
-#define glGenerateMipmapEXT glGenerateMipmapOES
-#define glBindFramebufferEXT glBindFramebufferOES
-#define glDeleteFramebuffersEXT glDeleteFramebuffersOES
+#define GL_FRAMEBUFFER GL_FRAMEBUFFER_OES
+#define GL_COLOR_ATTACHMENT0 GL_COLOR_ATTACHMENT0_OES
+#define GL_DEPTH_COMPONENT16 GL_DEPTH_COMPONENT16_OES
+#define GL_DEPTH_ATTACHMENT_EXT GL_DEPTH_ATTACHMENT_OES
+extern PFNGLBLENDEQUATIONOESPROC       glBlendEquation;
+extern PFNGLBLENDFUNCSEPARATEOESPROC   glBlendFuncSeparate;
+extern PFNGLBLENDEQUATIONSEPARATEOESPROC glBlendEquationSeparate;
+extern PFNGLGENERATEMIPMAPOESPROC      glGenerateMipmapEXT;
+extern PFNGLBINDFRAMEBUFFEROESPROC     glBindFramebufferEXT;
+extern PFNGLDELETEFRAMEBUFFERSOESPROC  glDeleteFramebuffersEXT;
+extern PFNGLGENFRAMEBUFFERSOESPROC     glGenFramebuffersEXT;
+extern PFNGLCHECKFRAMEBUFFERSTATUSOESPROC glCheckFramebufferStatusEXT;
+extern PFNGLFRAMEBUFFERTEXTURE2DOESPROC glFramebufferTexture2DEXT;
+extern PFNGLDRAWTEXIOESPROC            glDrawTexiOES;
 #define GL_DEPTH_COMPONENT24 GL_DEPTH_COMPONENT24_OES
 #endif
 #else
