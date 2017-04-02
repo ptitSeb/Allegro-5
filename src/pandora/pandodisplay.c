@@ -25,6 +25,8 @@ ALLEGRO_DEBUG_CHANNEL("display")
 
 #ifdef USE_XCURSOR
 #include "allegro5/internal/aintern_xcursor.h"
+#include <X11/cursorfont.h>
+#include <X11/Xcursor/Xcursor.h>
 #endif
 
 #define PITCH 128
@@ -428,6 +430,153 @@ static bool pandora_hide_mouse_cursor(ALLEGRO_DISPLAY *display)
     XFixesHideCursor(system->x11display, pando->window);
     return true;
 }
+#else
+static bool pandora_set_mouse_xcursor(ALLEGRO_DISPLAY *display,
+                                  ALLEGRO_MOUSE_CURSOR *cursor)
+{
+    ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
+    ALLEGRO_MOUSE_CURSOR_XWIN *xcursor = (ALLEGRO_MOUSE_CURSOR_XWIN *)cursor;
+    ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+    Display *xdisplay = system->x11display;
+    Window xwindow = pando->window;
+
+    pando->current_cursor = xcursor->cursor;
+
+    if (!pando->cursor_hidden) {
+        _al_mutex_lock(&system->lock);
+        XDefineCursor(xdisplay, xwindow, pando->current_cursor);
+        _al_mutex_unlock(&system->lock);
+    }
+
+    return true;
+}
+
+static bool pandora_set_system_mouse_xcursor(ALLEGRO_DISPLAY *display,
+                                         ALLEGRO_SYSTEM_MOUSE_CURSOR cursor_id)
+{
+    ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
+    ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
+    Display *xdisplay = system->x11display;
+    Window xwindow = pando->window;
+    unsigned int cursor_shape;
+
+    switch (cursor_id) {
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_DEFAULT:
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_ARROW:
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_PROGRESS:
+            cursor_shape = XC_left_ptr;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_BUSY:
+            cursor_shape = XC_watch;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_QUESTION:
+            cursor_shape = XC_question_arrow;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_EDIT:
+            cursor_shape = XC_xterm;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_MOVE:
+            cursor_shape = XC_fleur;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_N:
+            cursor_shape = XC_top_side;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_S:
+            cursor_shape = XC_bottom_side;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_E:
+            cursor_shape = XC_right_side;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_W:
+            cursor_shape = XC_left_side;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_NE:
+            cursor_shape = XC_top_right_corner;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_SW:
+            cursor_shape = XC_bottom_left_corner;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_NW:
+            cursor_shape = XC_top_left_corner;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_RESIZE_SE:
+            cursor_shape = XC_bottom_right_corner;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_PRECISION:
+            cursor_shape = XC_crosshair;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_LINK:
+            cursor_shape = XC_hand2;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_ALT_SELECT:
+            cursor_shape = XC_hand1;
+            break;
+        case ALLEGRO_SYSTEM_MOUSE_CURSOR_UNAVAILABLE:
+            cursor_shape = XC_X_cursor;
+            break;
+        default:
+            return false;
+    }
+    pando->current_cursor = XCreateFontCursor(xdisplay, cursor_shape);
+    if (!pando->cursor_hidden) {
+        XDefineCursor(xdisplay, xwindow, pando->current_cursor);
+    }
+    return true;
+}
+
+static bool pandora_show_mouse_xcursor(ALLEGRO_DISPLAY *display)
+{
+    ALLEGRO_DISPLAY_PANDORA *pando = (void *)display;
+    ALLEGRO_SYSTEM_PANDORA *system = (void *)al_get_system_driver();
+    Display *xdisplay = system->x11display;
+    Window xwindow = pando->window;
+
+    if (!pando->cursor_hidden)
+        return true;
+
+    XDefineCursor(xdisplay, xwindow, pando->current_cursor);
+    pando->cursor_hidden = false;
+    return true;
+}
+
+static bool pandora_hide_mouse_xcursor(ALLEGRO_DISPLAY *display)
+{
+    ALLEGRO_DISPLAY_PANDORA *pando = (void *)display;
+    ALLEGRO_SYSTEM_PANDORA *system = (void *)al_get_system_driver();
+    Display *xdisplay = system->x11display;
+    Window xwindow = pando->window;
+
+    if (pando->cursor_hidden)
+        return true;
+
+    if (pando->invisible_cursor == None) {
+        unsigned long gcmask;
+        XGCValues gcvalues;
+
+        Pixmap pixmap = XCreatePixmap(xdisplay, xwindow, 1, 1, 1);
+
+        GC temp_gc;
+        XColor color;
+
+        gcmask = GCFunction | GCForeground | GCBackground;
+        gcvalues.function = GXcopy;
+        gcvalues.foreground = 0;
+        gcvalues.background = 0;
+        temp_gc = XCreateGC(xdisplay, pixmap, gcmask, &gcvalues);
+        XDrawPoint(xdisplay, pixmap, temp_gc, 0, 0);
+        XFreeGC(xdisplay, temp_gc);
+        color.pixel = 0;
+        color.red = color.green = color.blue = 0;
+        color.flags = DoRed | DoGreen | DoBlue;
+        pando->invisible_cursor = XCreatePixmapCursor(xdisplay, pixmap,
+            pixmap, &color, &color, 0, 0);
+        XFreePixmap(xdisplay, pixmap);
+    }
+    XDefineCursor(xdisplay, xwindow, pando->invisible_cursor);
+    pando->cursor_hidden = true;
+
+    return true;
+}
 #endif
 void _al_display_xglx_await_resize(ALLEGRO_DISPLAY *d, int old_resize_count,
    bool delay_hack)
@@ -478,7 +627,10 @@ ALLEGRO_DISPLAY_INTERFACE *_al_get_pandora_display_interface(void)
     vt->show_mouse_cursor = pandora_show_mouse_cursor;
     vt->hide_mouse_cursor = pandora_hide_mouse_cursor;
 #else
-    _al_xwin_add_cursor_functions(vt);
+    vt->set_mouse_cursor = pandora_set_mouse_xcursor;
+    vt->set_system_mouse_cursor = pandora_set_system_mouse_xcursor;
+    vt->show_mouse_cursor = pandora_show_mouse_xcursor;
+    vt->hide_mouse_cursor = pandora_hide_mouse_xcursor;
 #endif
     return vt;
 }
