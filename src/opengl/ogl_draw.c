@@ -22,6 +22,9 @@
 #ifdef ALLEGRO_ANDROID
 #include "allegro5/internal/aintern_android.h"
 #endif
+#ifdef ALLEGRO_PANDORA
+#include "allegro5/internal/aintern_pandora.h"
+#endif
 
 #include "ogl_helpers.h"
 
@@ -551,7 +554,9 @@ static void ogl_update_transformation(ALLEGRO_DISPLAY* disp,
       glViewport(target->xofs, ogl_extra->true_h - (target->yofs + target->h), target->w, target->h);
    } else {
       #ifdef ALLEGRO_PANDORA
-      glViewport(0, 0, 800, 480);   // is that correct???
+      float scale_x, scale_y;
+      _al_pandora_get_mouse_scale_ratios(&scale_x, &scale_y);
+      glViewport(0, 0, target->w/scale_x, target->h/scale_y);   // is that correct???
       #else
       glViewport(0, 0, target->w, target->h);
       #endif
