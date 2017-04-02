@@ -20,7 +20,7 @@ ALLEGRO_DEBUG_CHANNEL("display")
 #endif
 #include "eglport.h"
 
-// with USE_XCURSOR, the function from x/xcursor.c are used.
+// with USE_XCURSOR, the function from x/xcursor.c are used (a copy of them).
 #define USE_XCURSOR
 
 #ifdef USE_XCURSOR
@@ -183,7 +183,7 @@ printf("pandora_create_display(%d, %d)\n", w, h);
 	printf("Attaching glExtension...\n");
     #define GO(A, B, C) A = (B)eglGetProcAddress(#C); \
     if (A == NULL) \
-      printf("*** NO" #C "found !!!\n");
+      printf("*** NO " #C " found !!!\n");
 
     GO(glBlendEquation, PFNGLBLENDEQUATIONOESPROC, glBlendEquationOES);
     GO(glBlendFuncSeparate, PFNGLBLENDFUNCSEPARATEOESPROC, glBlendFuncSeparateOES);
@@ -198,7 +198,7 @@ printf("pandora_create_display(%d, %d)\n", w, h);
     GO(glDeleteRenderbuffersEXT, PFNGLDELETERENDERBUFFERSOESPROC, glDeleteRenderbuffersOES);
     GO(glGenRenderbuffersEXT, PFNGLGENRENDERBUFFERSOESPROC, glGenRenderbuffersOES);
     GO(glRenderbufferStorageEXT, PFNGLRENDERBUFFERSTORAGEOESPROC, glRenderbufferStorageOES);
-    GO(glFramebufferRenderbufferEXT, PFNGLFRAMEBUFFERRENDERBUFFEROESPROC, glFramebufferRenderbufferEXT);
+    GO(glFramebufferRenderbufferEXT, PFNGLFRAMEBUFFERRENDERBUFFEROESPROC, glFramebufferRenderbufferOES);
     GO(glDrawTexiOES, PFNGLDRAWTEXIOESPROC, glDrawTexiOES);
     #undef GO
 	printf("Done with extensions\n");	
@@ -223,6 +223,7 @@ PFNGLRENDERBUFFERSTORAGEOESPROC	glRenderbufferStorageEXT = NULL;
 PFNGLFRAMEBUFFERRENDERBUFFEROESPROC	glFramebufferRenderbufferEXT = NULL;
 PFNGLDRAWTEXIOESPROC		glDrawTexiOES = NULL;
 #endif
+
 static void pandora_destroy_display(ALLEGRO_DISPLAY *d)
 {
 //printf("pandora_destroy_display(%x)\n", d);
@@ -434,6 +435,8 @@ static bool pandora_hide_mouse_cursor(ALLEGRO_DISPLAY *display)
 static bool pandora_set_mouse_xcursor(ALLEGRO_DISPLAY *display,
                                   ALLEGRO_MOUSE_CURSOR *cursor)
 {
+    #if 0
+    // doesn't seems to works. Maybe the cursor creation function is missing?
     ALLEGRO_DISPLAY_PANDORA *pando = (ALLEGRO_DISPLAY_PANDORA *)display;
     ALLEGRO_MOUSE_CURSOR_XWIN *xcursor = (ALLEGRO_MOUSE_CURSOR_XWIN *)cursor;
     ALLEGRO_SYSTEM_PANDORA *system = (ALLEGRO_SYSTEM_PANDORA *)al_get_system_driver();
@@ -444,10 +447,14 @@ static bool pandora_set_mouse_xcursor(ALLEGRO_DISPLAY *display,
 
     if (!pando->cursor_hidden) {
         _al_mutex_lock(&system->lock);
+        XSync(xdisplay, False);
         XDefineCursor(xdisplay, xwindow, pando->current_cursor);
         _al_mutex_unlock(&system->lock);
     }
-
+    #else
+    (void)display;
+    (void)cursor;
+    #endif
     return true;
 }
 
@@ -517,10 +524,14 @@ static bool pandora_set_system_mouse_xcursor(ALLEGRO_DISPLAY *display,
         default:
             return false;
     }
+    _al_mutex_lock(&system->lock);
+
     pando->current_cursor = XCreateFontCursor(xdisplay, cursor_shape);
     if (!pando->cursor_hidden) {
+        XSync(xdisplay, False);
         XDefineCursor(xdisplay, xwindow, pando->current_cursor);
     }
+    _al_mutex_unlock(&system->lock);
     return true;
 }
 
@@ -534,7 +545,10 @@ static bool pandora_show_mouse_xcursor(ALLEGRO_DISPLAY *display)
     if (!pando->cursor_hidden)
         return true;
 
+    _al_mutex_lock(&system->lock);
+    XSync(xdisplay, False);
     XDefineCursor(xdisplay, xwindow, pando->current_cursor);
+    _al_mutex_unlock(&system->lock);
     pando->cursor_hidden = false;
     return true;
 }
@@ -549,6 +563,7 @@ static bool pandora_hide_mouse_xcursor(ALLEGRO_DISPLAY *display)
     if (pando->cursor_hidden)
         return true;
 
+    _al_mutex_lock(&system->lock);
     if (pando->invisible_cursor == None) {
         unsigned long gcmask;
         XGCValues gcvalues;
@@ -572,7 +587,9 @@ static bool pandora_hide_mouse_xcursor(ALLEGRO_DISPLAY *display)
             pixmap, &color, &color, 0, 0);
         XFreePixmap(xdisplay, pixmap);
     }
+    XSync(xdisplay, False);
     XDefineCursor(xdisplay, xwindow, pando->invisible_cursor);
+    _al_mutex_unlock(&system->lock);
     pando->cursor_hidden = true;
 
     return true;

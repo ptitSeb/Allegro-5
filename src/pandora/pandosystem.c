@@ -55,6 +55,8 @@ static ALLEGRO_SYSTEM *pando_initialize(int flags)
 
    s->system.vt = pando_vt;
 
+   XInitThreads();
+
    return &s->system;
 }
 
