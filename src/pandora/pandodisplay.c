@@ -179,36 +179,26 @@ printf("pandora_create_display(%d, %d)\n", w, h);
 	#ifndef ALLEGRO_CFG_OPENGLES2
 	// Create the glExtentions
 	printf("Attaching glExtension...\n");
-	glBlendEquation = (PFNGLBLENDEQUATIONOESPROC) eglGetProcAddress("glBlendEquationOES");
-	if (glBlendEquation == NULL)
-		printf("*** NO glBlendEquationOES found !!!\n");
-	glBlendFuncSeparate = (PFNGLBLENDFUNCSEPARATEOESPROC) eglGetProcAddress("glBlendFuncSeparateOES");
-	if (glBlendFuncSeparate == NULL)
-		printf("*** NO glBlendFuncSeparateOES found !!!\n");
-    glBlendEquationSeparate = (PFNGLBLENDEQUATIONSEPARATEOESPROC) eglGetProcAddress("glBlendEquationSeparateOES");
-	if (glBlendEquationSeparate == NULL)
-		printf("*** NO glBlendEquationSeparateOES found !!!\n");
-    glGenerateMipmapEXT = (PFNGLGENERATEMIPMAPOESPROC) eglGetProcAddress("glGenerateMipmapOES");
-	if (glGenerateMipmapEXT == NULL)
-		printf("*** NO glGenerateMipmapOES found !!!\n");
-    glBindFramebufferEXT = (PFNGLBINDFRAMEBUFFEROESPROC) eglGetProcAddress("glBindFramebufferOES");
-	if (glBindFramebufferEXT == NULL)
-		printf("*** NO glBindFramebufferOES found !!!\n");
-    glDeleteFramebuffersEXT = (PFNGLDELETEFRAMEBUFFERSOESPROC) eglGetProcAddress("glDeleteFramebuffersOES");
-	if (glDeleteFramebuffersEXT == NULL)
-		printf("*** NO glDeleteFramebuffersOES found !!!\n");
-	glGenFramebuffersEXT = (PFNGLGENFRAMEBUFFERSOESPROC) eglGetProcAddress("glGenFramebuffersOES");
-	if (glGenFramebuffersEXT == NULL)
-		printf("*** NO glGenFramebuffersOES found !!!\n");
-	glCheckFramebufferStatusEXT = (PFNGLCHECKFRAMEBUFFERSTATUSOESPROC) eglGetProcAddress("glCheckFramebufferStatusOES");
-	if (glCheckFramebufferStatusEXT == NULL)
-		printf("*** NO glCheckFramebufferStatusOES found !!!\n");
-	glFramebufferTexture2DEXT = (PFNGLFRAMEBUFFERTEXTURE2DOESPROC) eglGetProcAddress("glFramebufferTexture2DOES");
-	if (glFramebufferTexture2DEXT == NULL)
-		printf("*** NO glFramebufferTexture2DOES found !!!\n");
-	glDrawTexiOES = (PFNGLDRAWTEXIOESPROC) eglGetProcAddress("glDrawTexiOES");
-	if (glDrawTexiOES == NULL)
-		printf("*** NO glDrawTexiOES found !!!\n");
+    #define GO(A, B, C) A = (B)eglGetProcAddress(#C); \
+    if (A == NULL) \
+      printf("*** NO" #C "found !!!\n");
+
+    GO(glBlendEquation, PFNGLBLENDEQUATIONOESPROC, glBlendEquationOES);
+    GO(glBlendFuncSeparate, PFNGLBLENDFUNCSEPARATEOESPROC, glBlendFuncSeparateOES);
+    GO(glBlendEquationSeparate, PFNGLBLENDEQUATIONSEPARATEOESPROC, glBlendEquationSeparateOES);
+    GO(glGenerateMipmapEXT, PFNGLGENERATEMIPMAPOESPROC, glGenerateMipmapOES);
+    GO(glBindFramebufferEXT, PFNGLBINDFRAMEBUFFEROESPROC, glBindFramebufferOES);
+    GO(glDeleteFramebuffersEXT, PFNGLDELETEFRAMEBUFFERSOESPROC, glDeleteFramebuffersOES);
+	GO(glGenFramebuffersEXT, PFNGLGENFRAMEBUFFERSOESPROC, glGenFramebuffersOES);
+	GO(glCheckFramebufferStatusEXT, PFNGLCHECKFRAMEBUFFERSTATUSOESPROC, glCheckFramebufferStatusOES);
+	GO(glFramebufferTexture2DEXT, PFNGLFRAMEBUFFERTEXTURE2DOESPROC, glFramebufferTexture2DOES);
+    GO(glBindRenderbufferEXT, PFNGLBINDRENDERBUFFEROESPROC, glBindRenderbufferOES);
+    GO(glDeleteRenderbuffersEXT, PFNGLDELETERENDERBUFFERSOESPROC, glDeleteRenderbuffersOES);
+    GO(glGenRenderbuffersEXT, PFNGLGENRENDERBUFFERSOESPROC, glGenRenderbuffersOES);
+    GO(glRenderbufferStorageEXT, PFNGLRENDERBUFFERSTORAGEOESPROC, glRenderbufferStorageOES);
+    GO(glFramebufferRenderbufferEXT, PFNGLFRAMEBUFFERRENDERBUFFEROESPROC, glFramebufferRenderbufferEXT);
+    GO(glDrawTexiOES, PFNGLDRAWTEXIOESPROC, glDrawTexiOES);
+    #undef GO
 	printf("Done with extensions\n");	
 	#endif
 	
@@ -224,6 +214,11 @@ PFNGLDELETEFRAMEBUFFERSOESPROC	glDeleteFramebuffersEXT = NULL;
 PFNGLGENFRAMEBUFFERSOESPROC	glGenFramebuffersEXT = NULL;
 PFNGLCHECKFRAMEBUFFERSTATUSOESPROC glCheckFramebufferStatusEXT = NULL;
 PFNGLFRAMEBUFFERTEXTURE2DOESPROC glFramebufferTexture2DEXT = NULL;
+PFNGLBINDRENDERBUFFEROESPROC	glBindRenderbufferEXT = NULL;
+PFNGLDELETERENDERBUFFERSOESPROC	glDeleteRenderbuffersEXT = NULL;
+PFNGLGENRENDERBUFFERSOESPROC	glGenRenderbuffersEXT = NULL;
+PFNGLRENDERBUFFERSTORAGEOESPROC	glRenderbufferStorageEXT = NULL;
+PFNGLFRAMEBUFFERRENDERBUFFEROESPROC	glFramebufferRenderbufferEXT = NULL;
 PFNGLDRAWTEXIOESPROC		glDrawTexiOES = NULL;
 #endif
 static void pandora_destroy_display(ALLEGRO_DISPLAY *d)
